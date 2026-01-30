@@ -59,7 +59,7 @@ const Sidebar = () => {
             </div>
             <p className="select-none text-[17px] text-[#F3F4F4]">Show online only</p>
             <span className="text-sm rounded-2xl w-5 h-5 flex items-center justify-center bg-[#0b445f] text-[#21b8c0]">
-              {onlineUsers.length - 1}
+              {onlineUsers?.length > 0 ? onlineUsers.length - 1 : 0}
             </span>
           </label>
         </div>
