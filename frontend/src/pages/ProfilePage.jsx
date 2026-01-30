@@ -71,13 +71,11 @@ const ProfilePage = () => {
     <div className="min-h-screen bg-[#042230] pt-4">
       <div className="max-w-xl mx-auto p-4">
         <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-700/50 overflow-hidden">
-          {/* Header Section with linear */}
           <div className="relative h-26 bg-linear-to-r from-blue-600/20 via-purple-600/20 to-indigo-600/20">
             <div className="absolute inset-0 bg-linear-to-b from-transparent to-slate-800/50"></div>
           </div>
 
           <div className="px-4 pb-6">
-            {/* Avatar Section - Overlapping Header */}
             <div className="flex flex-col items-center -mt-12 mb-4">
               <div className="relative">
                 <div className="absolute inset-0 bg-blue-600/30 rounded-full blur-xl"></div>
@@ -110,7 +108,6 @@ const ProfilePage = () => {
               </div>
             </div>
 
-            {/* Title */}
             <div className="text-center mb-4">
               <p className="text-sm text-gray-400">
                 Manage your account information

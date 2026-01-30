@@ -45,16 +45,15 @@ const SignUpPage = () => {
         >
           <source src="/208856.mp4" type="video/mp4" />
         </video>
-        {/* Overlay */}
         <div className="absolute inset-0 bg-black/50"></div>
       </div>
 
       <div className="relative z-10 w-full max-w-lg backdrop-blur-3xl rounded-3xl shadow-2xl border border-gray-400/20 overflow-hidden">        
         <div className="grid grid-cols-1 h-full">
-          {/* Form Container */}
+
           <div className="flex flex-col justify-center items-center p-8 sm:p-12 lg:p-14">
             <div className="w-full max-w-md space-y-6">
-              {/* Logo Section */}
+  
               <div className="text-center mb-4">
                 <div className="flex flex-col items-center group">
                   <div className="relative">
@@ -66,7 +65,6 @@ const SignUpPage = () => {
                 </div>
               </div>
 
-              {/* Header */}
               <div className="text-center space-y-1">
                 <h2 className="text-3xl font-bold text-gray-200">Create Account</h2>
                 <p className="text-gray-400 tracking-wider">Welcome to ConnectX</p>
@@ -158,7 +156,7 @@ const SignUpPage = () => {
                 </button>
               </form>
 
-              {/* Login Link */}
+              {/* Login link */}
               <div className="text-center">
                 <p className="text-gray-400">
                   Already have an account?{" "}

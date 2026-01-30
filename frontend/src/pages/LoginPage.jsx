@@ -29,7 +29,6 @@ const LoginPage = () => {
         >
           <source src="/208856.mp4" type="video/mp4" />
         </video>
-        {/* Overlay */}
         <div className="absolute inset-0 bg-black/50"></div>
       </div>
 
@@ -50,7 +49,6 @@ const LoginPage = () => {
                 </div>
               </div>
 
-              {/* Header */}
               <div className="text-center space-y-3">
                 <h2 className="text-3xl font-bold text-gray-200">Welcome Back</h2>
                 <p className="text-gray-400">Sign in to continue your conversations</p>
@@ -113,7 +111,6 @@ const LoginPage = () => {
                   </div>
                 </div>
 
-                {/* Signin Button */}
                 <button
                   type="submit"
                   className="w-full h-12 rounded-xl text-base font-semibold bg-linear-to-r from-[#5e5f1e]/80 to-[#3d1100]/80 hover:scale-[1.02] transition-all mt-3"
@@ -122,7 +119,6 @@ const LoginPage = () => {
                 </button>
               </form>
 
-              {/* Signup Link */}
               <div className="text-center">
                 <p className="text-gray-400">
                   Don't have an account?{" "}
