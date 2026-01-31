@@ -13,12 +13,12 @@ A modern, feature-rich messaging platform built with React and Node.js. Connect 
 - **Emoticons** - Express yourself with emoji support
 
 ### Message Management
-- **Message Actions** - Edit and delete messages within a specific duration
+- **Message Actions** - Edit and delete messages within a specific duration (5 minutes)
 - **Media Sharing** - Share media seamlessly
 - **Message History** - Access your complete chat history
 
 ### User Experience
-- **Profile Update** - Customize your profile with avatar and bio
+- **Profile Update** - Customize your profile with avatar
 - **Responsive Design** - Works perfectly on desktop and mobile
 
 ### Safety & Security
