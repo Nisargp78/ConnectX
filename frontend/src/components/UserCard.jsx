@@ -5,7 +5,7 @@ const UserCard = ({ user, selectedUser, onlineUsers, onClick }) => {
   return (
     <button
       onClick={() => onClick(user)}
-      className={`w-full p-3 flex items-center gap-3 rounded-lg transition-all duration-200 cursor-pointer ${
+      className={`w-full p-3 flex items-center justify-center gap-3 rounded-lg transition-all duration-200 cursor-pointer ${
         isSelected
           ? "bg-[#5F9598]/30 border border-[#5F9598] shadow-lg shadow-[#5F9598]/20"
           : "hover:bg-[#5F9598]/8 border border-transparent"

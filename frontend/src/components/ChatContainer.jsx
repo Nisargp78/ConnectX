@@ -5,7 +5,7 @@ import Messages from "./Messages";
 const ChatContainer = () => {
 
   return (
-    <div className="flex-1 flex flex-col overflow-auto bg-[#061E29]">
+    <div className="flex-1 flex flex-col md:overflow-auto bg-[#061E29] overflow-hidden relative">
       <ChatHeader />
       <Messages />
       <MessageInput />

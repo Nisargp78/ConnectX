@@ -64,17 +64,17 @@ const Messages = () => {
           ref={isLast ? messageEndRef : null}
         >
           <div
-            className={`flex items-end gap-3 max-w-[80%] ${isSender ? "flex-row-reverse" : ""} group`}
-          >
+          className={`flex items-end gap-2 md:gap-3 max-w-[85%] md:max-w-[80%] ${isSender ? "flex-row-reverse" : ""} group`}
+        >
             <img
               src={avatarSrc}
               alt="profile pic"
-              className="size-10 rounded-full border-2 border-slate-700/50 object-cover ring-2 ring-slate-700/30"
+              className="size-7 md:size-10 rounded-full border-2 border-slate-700/50 object-cover ring-2 ring-slate-700/30"
             />
 
             <div
-              className={`rounded-2xl px-4 py-2.5 text-[#F3F4F4] transition-all
-              ${isSender ? " bg-[#347579]" : "bg-[#1D546D]"}`}
+              className={`rounded-2xl px-2.5 md:px-4 py-1.5 md:py-2.5 text-[#F3F4F4] transition-all text-sm md:text-base 
+                ${isSender ? " bg-[#347579]" : "bg-[#1D546D]"}`}
             >
               
               {message.image && (
@@ -87,12 +87,12 @@ const Messages = () => {
 
               {message.text && (
                 <div className="space-y-1">
-                  <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                    <span className="whitespace-pre-wrap wrap-break-words leading-relaxed flex-1">
+                  <div className="flex items-baseline justify-between gap-1 md:gap-2 flex-wrap">
+                    <span className="whitespace-pre-wrap wrap-break-words leading-relaxed flex-1 text-sm md:text-base">
                       {message.text}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[11px] text-slate-300/80 whitespace-nowrap">
+                      <span className="text-[10px] md:text-[11px] text-slate-300/80 whitespace-nowrap">
                         {formatMessageTime(message.createdAt)}
                         {message.isEdited && <span className="ml-1">(edited)</span>}
                       </span>
@@ -106,8 +106,8 @@ const Messages = () => {
               )}
 
               {!message.text && (
-                <div className="flex items-center justify-end gap-2">
-                  <span className="text-[11px] text-slate-300/80">
+                <div className="flex items-center justify-end gap-1 md:gap-2">
+                  <span className="text-[10px] md:text-[11px] text-slate-300/80">
                     {formatMessageTime(message.createdAt)}
                   </span>
                   <MessageActions
@@ -124,7 +124,7 @@ const Messages = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-[#347579] scrollbar-track-[#061E29] hover:scrollbar-thumb-[#3d8589]">
+    <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-2 md:space-y-4 scrollbar-thin scrollbar-thumb-[#347579] scrollbar-track-[#061E29] hover:scrollbar-thumb-[#3d8589]">
       {messages.map((message, idx) => renderMessage(message, idx))}
     </div>
   );

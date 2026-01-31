@@ -27,7 +27,7 @@ const App = () => {
     <div className="min-h-screen bg-[#061E29] text-slate-100 transition-colors">
       {authUser && <Navbar />}
 
-      <div className={authUser ? "ml-20" : ""}>
+      <div className={authUser ? "md:ml-20 pt-16 md:pt-0" : ""}>
         <Routes>
           <Route path="/" element={authUser ? <HomePage /> : <Navigate to="/login" />} />
           <Route path="/signup" element={!authUser ? <SignUpPage /> : <Navigate to="/" />} />

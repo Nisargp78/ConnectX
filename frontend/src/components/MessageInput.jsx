@@ -54,7 +54,7 @@ const MessageInput = () => {
   };
 
   return (
-    <div className="p-4 w-full border-t border-[#F3F4F4]/5 bg-[#0A2A3A]/30">
+    <div className="p-2 md:p-4 w-full border-t border-[#F3F4F4]/5 bg-[#0A2A3A]/30 sticky bottom-0 md:relative z-10">
       {imagePreview && (
         <div className="mb-3 flex items-center gap-2">
           <div className="relative">
@@ -75,21 +75,21 @@ const MessageInput = () => {
         </div>
       )}
 
-      <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-        <div className="flex-1 flex gap-2">
+      <form onSubmit={handleSendMessage} className="flex items-center gap-1 md:gap-2">
+        <div className="flex-1 flex gap-1 md:gap-2">
           <input
             type="text"
-            className="w-full px-4 py-2.5 rounded-xl bg-[#051923]/40 border border-slate-600/50 focus:border-[#5F9598] focus:outline-none text-[#F3F4F4] placeholder-[#F3F4F4]/35 transition-colors caret-[#5F9598]"
+            className="w-full px-2 md:px-4 py-1.5 md:py-2.5 text-sm md:text-base rounded-xl bg-[#051923]/40 border border-slate-600/50 focus:border-[#5F9598] focus:outline-none text-[#F3F4F4] placeholder-[#F3F4F4]/35 transition-colors caret-[#5F9598]"
             placeholder="Type a message..."
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
           <button
             type="button"
-            className="p-2.5 rounded-lg text-[#F3F4F4] hover:bg-slate-700/40 border border-transparent cursor-pointer transition-colors"
+            className="p-1.5 md:p-2.5 rounded-lg text-[#F3F4F4] hover:bg-slate-700/40 border border-transparent cursor-pointer transition-colors"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
           >
-            <Smile size={20} />
+            <Smile className="size-4 md:size-5" />
           </button>
 
           {showEmojiPicker && (
@@ -106,12 +106,12 @@ const MessageInput = () => {
 
           <button
             type="button"
-            className={`p-2.5 rounded-lg transition-colors ${
+            className={`p-1.5 md:p-2.5 rounded-lg transition-colors ${
               imagePreview ? "bg-emerald-500/30 text-emerald-400 border border-emerald-500/50" : "text-[#F3F4F4] hover:bg-slate-700/40 border border-transparent cursor-pointer"
             }`}
             onClick={() => fileInputRef.current?.click()}
           >
-            <Image size={20} />
+            <Image className="size-4 md:size-5" />
           </button>
           
           <input
@@ -125,10 +125,10 @@ const MessageInput = () => {
         </div>
         <button
           type="submit"
-          className="p-2 rounded-lg bg-teal-600 hover:bg-teal-800 text-[#F3F4F4] transition-colors cursor-pointer disabled:bg-[#1D546D]/80 disabled:cursor-not-allowed"
+          className="p-1.5 md:p-2 rounded-lg bg-teal-600 hover:bg-teal-800 text-[#F3F4F4] transition-colors cursor-pointer disabled:bg-[#1D546D]/80 disabled:cursor-not-allowed"
           disabled={!text.trim() && !imagePreview}
         >
-          <Send size={21} />
+          <Send className="size-4 md:size-5" />
         </button>
       </form>
     </div>
