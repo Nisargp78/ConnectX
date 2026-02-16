@@ -9,7 +9,7 @@ const MessageActions = ({ message, isSender, onAfterAction }) => {
   const [canModify, setCanModify] = useState(true);
   const { editMessage, deleteMessage } = useMessage();
 
-  const TIME_LIMIT = 5 * 60 * 1000;
+  const TIME_LIMIT = 1 * 60 * 1000;
 
   useEffect(() => {
     setEditText(message.text || "");
@@ -112,7 +112,7 @@ const MessageActions = ({ message, isSender, onAfterAction }) => {
             </>
           ) : (
             <div className="px-3 py-2 w-max text-xs text-slate-400">
-              Cannot modify after 5 minutes
+              Cannot modify after 1 minute
             </div>
           )}
         </div>
