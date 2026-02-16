@@ -124,7 +124,7 @@ const Messages = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-2 md:space-y-4 scrollbar-thin scrollbar-thumb-[#347579] scrollbar-track-[#061E29] hover:scrollbar-thumb-[#3d8589]">
+    <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-2 md:space-y-4 scrollbar-thin">
       {messages.map((message, idx) => renderMessage(message, idx))}
     </div>
   );

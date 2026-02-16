@@ -65,7 +65,7 @@ const Sidebar = () => {
         </div>
       </div>
 
-      <div className="overflow-y-auto w-full py-2 space-y-1 px-2">
+      <div className="overflow-y-auto w-full py-2 space-y-1 px-2 scrollbar-thin">
         {filteredUsers.map((user) => (
           <UserCard
             key={user._id}
