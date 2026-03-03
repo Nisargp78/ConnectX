@@ -93,7 +93,7 @@ const MessageActions = ({ message, isSender, onAfterAction }) => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded shadow-lg z-10 min-w-40">
+        <div className="absolute right-0 bottom-full mb-1 bg-slate-800 border border-slate-700 rounded shadow-lg z-10 min-w-40">
           {canModify ? (
             <>
               <button

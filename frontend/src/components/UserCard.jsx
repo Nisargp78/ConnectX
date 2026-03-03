@@ -1,6 +1,7 @@
-const UserCard = ({ user, selectedUser, onlineUsers, onClick }) => {
+const UserCard = ({ user, selectedUser, onlineUsers, unreadCount, onClick }) => {
   const isSelected = selectedUser?._id === user._id;
   const isOnline = onlineUsers.includes(user._id);
+  const latestMessagePreview = user.latestMessage || "Start a conversation";
 
   return (
     <button
@@ -24,9 +25,17 @@ const UserCard = ({ user, selectedUser, onlineUsers, onClick }) => {
         />
       </div>
 
-      <div className="hidden lg:block text-left min-w-0 flex-1">
-        <div className="font-light truncate text-[#F3F4F4]">
-          {user.fullName}
+      <div className="text-left min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-light truncate text-[#F3F4F4] text-sm lg:text-base">{user.fullName}</div>
+          {unreadCount > 0 && (
+            <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#21b8c0] text-[#051923] text-xs font-semibold flex items-center justify-center shrink-0">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </div>
+        <div className="hidden lg:block text-xs text-slate-400 truncate mt-0.5">
+          {latestMessagePreview}
         </div>
       </div>
     </button>

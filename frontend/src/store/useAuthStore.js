@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
+import { useChatStore } from "./useChatStore";
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
@@ -59,10 +60,12 @@ export const useAuthStore = create((set, get) => ({
 
   logout: async () => {
     try {
+      // Disconnect socket first to ensure immediate offline status
+      get().disconnectSocket();
+      
       await axiosInstance.post("/auth/logout");
       set({ authUser: null });
       toast.success("Logged out successfully");
-      get().disconnectSocket();
     } catch (error) {
       toast.error(error.response.data.message);
     }
@@ -98,8 +101,23 @@ export const useAuthStore = create((set, get) => ({
     socket.on("getOnlineUsers", (userIds) => {
       set({ onlineUsers: userIds});
     });
+
+    socket.on("newMessage", (newMessage) => {
+      const chatStore = useChatStore.getState();
+      chatStore.handleIncomingMessage(newMessage);
+    });
+
+    // Global listener for message status updates (always active)
+    socket.on("messageStatusUpdated", ({ messageId, status, deliveredAt, readAt }) => {
+      const chatStore = useChatStore.getState();
+      chatStore.updateMessageStatus(messageId, status, deliveredAt, readAt);
+    });
   },
   disconnectSocket: () => {
-    if (get().socket?.connected) get().socket.disconnect();
+    const socket = get().socket;
+    if (socket?.connected) {
+      socket.disconnect();
+    }
+    set({ socket: null, onlineUsers: [] });
   },
 }));

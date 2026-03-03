@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime , formatDate} from "../lib/format";
 import MessageActions from "./MessageActions";
+import MessageStatusIcon from "./MessageStatusIcon";
 
 const Messages = () => {
    const {
@@ -96,6 +97,7 @@ const Messages = () => {
                         {formatMessageTime(message.createdAt)}
                         {message.isEdited && <span className="ml-1">(edited)</span>}
                       </span>
+                      {isSender && <MessageStatusIcon status={message.status} />}
                       <MessageActions
                         message={message}
                         isSender={isSender}
@@ -110,6 +112,7 @@ const Messages = () => {
                   <span className="text-[10px] md:text-[11px] text-slate-300/80">
                     {formatMessageTime(message.createdAt)}
                   </span>
+                  {isSender && <MessageStatusIcon status={message.status} />}
                   <MessageActions
                     message={message}
                     isSender={isSender}

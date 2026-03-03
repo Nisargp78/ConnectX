@@ -19,7 +19,7 @@ const App = () => {
     checkAuth();
   }, [checkAuth]);
 
-  if(isCheckingAuth){
+  if (isCheckingAuth) {
     return <Loading />;
   }
 
@@ -29,14 +29,54 @@ const App = () => {
 
       <div className={authUser ? "md:ml-20 pt-16 md:pt-0" : ""}>
         <Routes>
-          <Route path="/" element={authUser ? <HomePage /> : <Navigate to="/login" />} />
-          <Route path="/signup" element={!authUser ? <SignUpPage /> : <Navigate to="/" />} />
-          <Route path="/login" element={!authUser ? <LoginPage /> : <Navigate to="/" />} />
-          <Route path="/profile" element={authUser ? <ProfilePage /> : <Navigate to="/login" />} />
+          <Route
+            path="/"
+            element={authUser ? <HomePage /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/signup"
+            element={!authUser ? <SignUpPage /> : <Navigate to="/" />}
+          />
+          <Route
+            path="/login"
+            element={!authUser ? <LoginPage /> : <Navigate to="/" />}
+          />
+          <Route
+            path="/profile"
+            element={authUser ? <ProfilePage /> : <Navigate to="/login" />}
+          />
         </Routes>
       </div>
 
-      <Toaster />
+      <Toaster
+        position="top-center"
+        gutter={10}
+        toastOptions={{
+          duration: 3200,
+          style: {
+            background: "#0b2434",
+            color: "#F3F4F4",
+            border: "1px solid rgba(95, 149, 152, 0.55)",
+            borderRadius: "12px",
+            boxShadow: "0 10px 25px rgba(0, 0, 0, 0.35)",
+            padding: "12px 14px",
+            fontSize: "14px",
+            maxWidth: "380px",
+          },
+          success: {
+            iconTheme: {
+              primary: "#27b588",
+              secondary: "#051923",
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: "#ef4444",
+              secondary: "#051923",
+            },
+          },
+        }}
+      />
     </div>
   );
 };

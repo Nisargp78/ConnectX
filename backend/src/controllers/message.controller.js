@@ -8,11 +8,70 @@ import { filterAbusiveWords } from "../lib/profanity.js";
 export const getUsersForSidebar = async (req, res) => {
   try {
     const loggedInUserId = req.user._id;
-    const filteredUsers = await User.find({ _id: { $ne: loggedInUserId } }).select("-password");
+    const myId = loggedInUserId.toString();
 
-    res.status(200).json(filteredUsers);
+    const conversationMessages = await Message.find({
+      $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
+    })
+      .select("senderId receiverId text image createdAt")
+      .sort({ createdAt: -1 });
+
+    const participantIds = [];
+    const latestMessageByUser = new Map();
+    const seen = new Set();
+
+    for (const message of conversationMessages) {
+      const senderId = message.senderId.toString();
+      const receiverId = message.receiverId.toString();
+      const otherUserId = senderId === myId ? receiverId : senderId;
+
+      if (!seen.has(otherUserId)) {
+        seen.add(otherUserId);
+        participantIds.push(otherUserId);
+        latestMessageByUser.set(otherUserId, {
+          latestMessage: message.text || (message.image ? "📷 Photo" : "Message"),
+          latestMessageAt: message.createdAt,
+          latestMessageSenderId: senderId,
+        });
+      }
+    }
+
+    if (participantIds.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    const participants = await User.find({ _id: { $in: participantIds } }).select("-password");
+    const participantMap = new Map(participants.map((user) => [user._id.toString(), user]));
+    const orderedParticipants = participantIds
+      .map((id) => {
+        const user = participantMap.get(id);
+        if (!user) return null;
+
+        const latestMeta = latestMessageByUser.get(id);
+        return {
+          ...user.toObject(),
+          latestMessage: latestMeta?.latestMessage || "",
+          latestMessageAt: latestMeta?.latestMessageAt || null,
+          latestMessageSenderId: latestMeta?.latestMessageSenderId || null,
+        };
+      })
+      .filter(Boolean);
+
+    res.status(200).json(orderedParticipants);
   } catch (error) {
     console.error("Error in getUsersForSidebar: ", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getAllUsersForNewChat = async (req, res) => {
+  try {
+    const loggedInUserId = req.user._id;
+    const users = await User.find({ _id: { $ne: loggedInUserId } }).select("-password");
+
+    res.status(200).json(users);
+  } catch (error) {
+    console.error("Error in getAllUsersForNewChat: ", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -61,8 +120,24 @@ export const sendMessage = async (req, res) => {
     await newMessage.save();
 
     const receiverSocketId = getReceiverSocketId(receiverId);
+    
+    // If receiver is online, immediately mark as delivered
     if (receiverSocketId) {
+      newMessage.status = "delivered";
+      newMessage.deliveredAt = new Date();
+      await newMessage.save();
+      
       io.to(receiverSocketId).emit("newMessage", newMessage);
+      
+      // Notify sender that message was delivered
+      const senderSocketId = getReceiverSocketId(senderId);
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messageStatusUpdated", {
+          messageId: newMessage._id,
+          status: "delivered",
+          deliveredAt: newMessage.deliveredAt,
+        });
+      }
     }
 
     res.status(201).json(newMessage);
@@ -124,3 +199,85 @@ export const deleteMessage = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+export const updateMessageStatus = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { status } = req.body;
+    const userId = req.user._id;
+
+    if (!["sent", "delivered", "read"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const message = await Message.findById(messageId);
+    
+    if (!message) {
+      return res.status(404).json({ error: "Message not found" });
+    }
+
+    // Only the receiver can update message status to delivered/read
+    if (message.receiverId.toString() !== userId.toString()) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    message.status = status;
+    if (status === "delivered" && !message.deliveredAt) {
+      message.deliveredAt = new Date();
+    }
+    if (status === "read" && !message.readAt) {
+      message.readAt = new Date();
+    }
+
+    await message.save();
+
+    const senderSocketId = getReceiverSocketId(message.senderId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messageStatusUpdated", {
+        messageId: message._id,
+        status: message.status,
+        deliveredAt: message.deliveredAt,
+        readAt: message.readAt,
+      });
+    }
+
+    res.status(200).json(message);
+  } catch (error) {
+    console.log("Error in updateMessageStatus controller: ", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const markMessagesAsDelivered = async (req, res) => {
+  try {
+    const { senderId } = req.params;
+    const receiverId = req.user._id;
+
+    const messages = await Message.updateMany(
+      {
+        senderId,
+        receiverId,
+        status: "sent",
+      },
+      {
+        status: "delivered",
+        deliveredAt: new Date(),
+      }
+    );
+
+    // Notify the sender about delivery status
+    const senderSocketId = getReceiverSocketId(senderId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messagesDelivered", {
+        senderId,
+        receiverId,
+      });
+    }
+
+    res.status(200).json({ message: "Messages marked as delivered" });
+  } catch (error) {
+    console.log("Error in markMessagesAsDelivered controller: ", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
