@@ -40,6 +40,18 @@ export const getUsersForSidebar = async (req, res) => {
       return res.status(200).json([]);
     }
 
+    // Count unread messages from each sender
+    const unreadCountByUser = new Map();
+    const unreadMessages = await Message.find({
+      receiverId: loggedInUserId,
+      status: { $ne: "read" },
+    }).select("senderId");
+
+    for (const message of unreadMessages) {
+      const senderId = message.senderId.toString();
+      unreadCountByUser.set(senderId, (unreadCountByUser.get(senderId) || 0) + 1);
+    }
+
     const participants = await User.find({ _id: { $in: participantIds } }).select("-password");
     const participantMap = new Map(participants.map((user) => [user._id.toString(), user]));
     const orderedParticipants = participantIds
@@ -53,6 +65,7 @@ export const getUsersForSidebar = async (req, res) => {
           latestMessage: latestMeta?.latestMessage || "",
           latestMessageAt: latestMeta?.latestMessageAt || null,
           latestMessageSenderId: latestMeta?.latestMessageSenderId || null,
+          unreadCount: unreadCountByUser.get(id) || 0,
         };
       })
       .filter(Boolean);
