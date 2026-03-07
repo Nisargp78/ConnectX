@@ -6,7 +6,7 @@ const UserCard = ({ user, selectedUser, onlineUsers, unreadCount, onClick }) => 
   return (
     <button
       onClick={() => onClick(user)}
-      className={`w-full p-3 flex items-center justify-center gap-3 rounded-lg transition-all duration-200 cursor-pointer ${
+      className={`w-full p-3 flex items-center justify-center lg:justify-start gap-3 rounded-lg transition-all duration-200 cursor-pointer relative ${
         isSelected
           ? "bg-[#5F9598]/30 border border-[#5F9598] shadow-lg shadow-[#5F9598]/20"
           : "hover:bg-[#5F9598]/8 border border-transparent"
@@ -23,9 +23,14 @@ const UserCard = ({ user, selectedUser, onlineUsers, unreadCount, onClick }) => 
             isOnline ? "bg-[#27b588]" : "bg-[#658789]"
           }`}
         />
+        {unreadCount > 0 && (
+          <span className="lg:hidden absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-[#21b8c0] text-[#051923] text-[10px] font-semibold flex items-center justify-center border border-[#0b2434]">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
       </div>
 
-      <div className="text-left min-w-0 flex-1">
+      <div className="hidden lg:block text-left min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <div className="font-light truncate text-[#F3F4F4] text-sm lg:text-base">{user.fullName}</div>
           {unreadCount > 0 && (
