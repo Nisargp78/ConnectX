@@ -82,15 +82,9 @@ export async function registerPushSubscription() {
     }
 
     // Send subscription to backend
-    try {
-      await axiosInstance.post("/auth/push/subscribe", {
-        subscription: subscription.toJSON(),
-      });
-      console.log("[PUSH] Subscription saved to backend");
-    } catch (err) {
-      console.error("[PUSH] Failed to save subscription:", err?.response?.status, err?.message);
-      throw err;
-    }
+    await axiosInstance.post("/auth/push/subscribe", {
+      subscription: subscription.toJSON(),
+    });
   } catch (error) {
     // Allow app to continue without push support
   }

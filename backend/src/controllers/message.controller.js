@@ -176,10 +176,7 @@ export const sendMessage = async (req, res) => {
       const body =
         filteredText?.trim() || (imageUrl ? "Sent you an image" : "Sent you a message");
 
-      console.log("[PUSH] Receiver offline, checking for", receiverId, "push subscriptions");
-
       if (receiver?.pushSubscriptions?.length) {
-        console.log("[PUSH] Found", receiver.pushSubscriptions.length, "subscriptions for offline receiver");
         const invalidEndpoints = [];
 
         await Promise.all(
@@ -216,8 +213,6 @@ export const sendMessage = async (req, res) => {
             },
           });
         }
-      } else {
-        console.log("[PUSH] Receiver", receiverId, "has no push subscriptions");
       }
     }
 

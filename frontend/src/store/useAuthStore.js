@@ -89,7 +89,7 @@ export const useAuthStore = create((set, get) => ({
       await registerPushSubscription();
       set({ isPushRegistered: true });
     } catch (error) {
-      console.log("Push setup skipped:", error?.message || error);
+      // Silent fail - allow app to continue without push
     }
   },
 
@@ -97,7 +97,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       await unregisterPushSubscription();
     } catch (error) {
-      console.log("Push teardown skipped:", error?.message || error);
+      // Silent fail - allow logout to proceed
     } finally {
       set({ isPushRegistered: false });
     }
