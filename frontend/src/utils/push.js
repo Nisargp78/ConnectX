@@ -96,26 +96,6 @@ export async function unregisterPushSubscription() {
       return;
     }
 
-    console.log("[Push] Unregistering push subscription...");
-    const registration = await navigator.serviceWorker.getRegistration("/");
-    if (!registration) {
-      console.log("[Push] No service worker registration found");
-      return;
-    }
-
-    const subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      console.log("[Push] No active subscription found");
-      return;
-    }
-
-    console.log("[Push] Removing subscription from backend:", subscription.endpoint);
-    await axiosInstance.post("/auth/push/unsubscribe", {
-      endpoint: subscription.endpoint,
-    });
-
-    console.log("[Push] Unsubscribing from push manager...");
-    await subscription.unsubscribe();
     const registration = await navigator.serviceWorker.getRegistration("/");
     if (!registration) {
       return;
@@ -132,4 +112,6 @@ export async function unregisterPushSubscription() {
 
     await subscription.unsubscribe();
   } catch (error) {
-    // A
+    // Allow logout to proceed
+  }
+}
