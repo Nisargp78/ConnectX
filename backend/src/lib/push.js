@@ -9,8 +9,11 @@ const contact = process.env.VAPID_CONTACT_EMAIL || "mailto:admin@connectx.local"
 
 if (publicKey && privateKey) {
   webpush.setVapidDetails(contact, publicKey, privateKey);
+  console.log("[Push] VAPID details configured successfully");
 } else {
-  console.warn("Web push is disabled: VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY is missing.");
+  console.warn("[Push] Web push is disabled: VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY is missing.");
+  console.warn("[Push] PUBLIC_KEY exists:", !!publicKey);
+  console.warn("[Push] PRIVATE_KEY exists:", !!privateKey);
 }
 
 export function getVapidPublicKey() {
@@ -22,7 +25,21 @@ export function isPushConfigured() {
 }
 
 export async function sendWebPush(subscription, payload) {
-  if (!isPushConfigured()) return;
+  if (!isPushConfigured()) {
+    console.warn("[Push] Push not configured, skipping send");
+    return;
+  }
 
-  await webpush.sendNotification(subscription, JSON.stringify(payload));
+  try {
+    console.log("[Push] Sending push to endpoint:", subscription.endpoint.substring(0, 50) + "...");
+    await webpush.sendNotification(subscription, JSON.stringify(payload));
+    console.log("[Push] Push sent successfully");
+  } catch (error) {
+    console.error("[Push] Error sending notification:", {
+      message: error?.message,
+      statusCode: error?.statusCode,
+      body: error?.body,
+    });
+    throw error;
+  }
 }

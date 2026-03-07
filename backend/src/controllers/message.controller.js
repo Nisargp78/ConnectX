@@ -177,11 +177,13 @@ export const sendMessage = async (req, res) => {
         filteredText?.trim() || (imageUrl ? "Sent you an image" : "Sent you a message");
 
       if (receiver?.pushSubscriptions?.length) {
+        console.log(`[Push] Receiver ${receiverId} has ${receiver.pushSubscriptions.length} subscriptions, sending push...`);
         const invalidEndpoints = [];
 
         await Promise.all(
           receiver.pushSubscriptions.map(async (subscription) => {
             try {
+              console.log(`[Push] Sending to endpoint: ${subscription.endpoint.substring(0, 50)}...`);
               await sendWebPush(subscription, {
                 title: senderName,
                 body,
@@ -205,6 +207,7 @@ export const sendMessage = async (req, res) => {
         );
 
         if (invalidEndpoints.length > 0) {
+          console.log(`[Push] Cleaning up ${invalidEndpoints.length} invalid subscription endpoints`);
           await User.findByIdAndUpdate(receiverId, {
             $pull: {
               pushSubscriptions: {
@@ -213,6 +216,8 @@ export const sendMessage = async (req, res) => {
             },
           });
         }
+      } else {
+        console.log(`[Push] Receiver ${receiverId} has no push subscriptions`);
       }
     }
 
