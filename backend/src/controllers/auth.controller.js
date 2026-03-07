@@ -122,7 +122,8 @@ export const subscribePush = async (req, res) => {
     );
 
     if (!existing) {
-      user.pushSubscriptions.push(subscription);
+      // Remove all old subscriptions and add only the new one
+      user.pushSubscriptions = [subscription];
       await user.save();
     }
 
