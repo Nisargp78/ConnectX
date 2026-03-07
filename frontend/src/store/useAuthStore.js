@@ -157,6 +157,16 @@ export const useAuthStore = create((set, get) => ({
       }
     });
 
+    socket.on("user_typing", ({ userId }) => {
+      const chatStore = useChatStore.getState();
+      chatStore.setUserTyping(userId);
+    });
+
+    socket.on("user_stopped_typing", ({ userId }) => {
+      const chatStore = useChatStore.getState();
+      chatStore.setUserStoppedTyping(userId);
+    });
+
     // Global listener for message status updates (always active)
     socket.on("messageStatusUpdated", ({ messageId, status, deliveredAt, readAt }) => {
       const chatStore = useChatStore.getState();
@@ -168,6 +178,8 @@ export const useAuthStore = create((set, get) => ({
     if (socket) {
       socket.off("getOnlineUsers");
       socket.off("receive_message");
+      socket.off("user_typing");
+      socket.off("user_stopped_typing");
       socket.off("messageStatusUpdated");
       socket.disconnect();
     }

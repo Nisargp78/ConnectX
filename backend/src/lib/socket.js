@@ -90,9 +90,27 @@ io.on("connection", (socket) => {
 
   io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
 
+  socket.on("user_typing", ({ receiverId }) => {
+    const receiverSocketIds = getReceiverSocketIds(receiverId);
+    receiverSocketIds.forEach((socketId) => {
+      io.to(socketId).emit("user_typing", {
+        userId,
+      });
+    });
+  });
+
+  socket.on("user_stopped_typing", ({ receiverId }) => {
+    const receiverSocketIds = getReceiverSocketIds(receiverId);
+    receiverSocketIds.forEach((socketId) => {
+      io.to(socketId).emit("user_stopped_typing", {
+        userId,
+      });
+    });
+  });
+
   socket.on("disconnect", async () => {
     const disconnectedUserId = socketToUserMap.get(socket.id);
-    console.log(`User disconnected: ${disconnectedUserId || userId}`);
+
 
     if (disconnectedUserId) {
       const socketIds = onlineUsers.get(disconnectedUserId);

@@ -12,6 +12,21 @@ export const useChatStore = create((set, get) => ({
   isUsersLoading: false,
   isAllUsersLoading: false,
   isMessagesLoading: false,
+  typingUsers: {},
+
+  setUserTyping: (userId) => {
+    set((state) => ({
+      typingUsers: { ...state.typingUsers, [userId]: true },
+    }));
+  },
+
+  setUserStoppedTyping: (userId) => {
+    set((state) => {
+      const newTypingUsers = { ...state.typingUsers };
+      delete newTypingUsers[userId];
+      return { typingUsers: newTypingUsers };
+    });
+  },
 
   getUsers: async () => {
     set({ isUsersLoading: true });

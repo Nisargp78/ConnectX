@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useChatStore } from "../store/useChatStore";
+import { useAuthStore } from "../store/useAuthStore";
 import { Image, Send, X, Smile } from "lucide-react";
 import toast from "react-hot-toast";
 import EmojiPicker from "emoji-picker-react";
@@ -9,7 +10,10 @@ const MessageInput = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef(null);
-  const { sendMessage } = useChatStore();
+  const typingTimeoutRef = useRef(null);
+  const isTypingRef = useRef(false);
+  const { sendMessage, selectedUser } = useChatStore();
+  const { socket } = useAuthStore();
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -35,9 +39,50 @@ const MessageInput = () => {
     setShowEmojiPicker(false);
   };
 
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (isTypingRef.current && socket && selectedUser) {
+        socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
+      }
+    };
+  }, [socket, selectedUser]);
+
+  const handleTyping = (value) => {
+    setText(value);
+
+    if (!socket || !selectedUser) return;
+
+    if (!isTypingRef.current && value.trim()) {
+      isTypingRef.current = true;
+      socket.emit("user_typing", { receiverId: selectedUser._id });
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
+      }
+    }, 2000);
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!text.trim() && !imagePreview) return;
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    if (isTypingRef.current && socket && selectedUser) {
+      isTypingRef.current = false;
+      socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
+    }
 
     try {
       await sendMessage({
@@ -82,7 +127,7 @@ const MessageInput = () => {
             className="w-full px-2 md:px-4 py-1.5 md:py-2.5 text-sm md:text-base rounded-xl bg-[#051923]/40 border border-slate-600/50 focus:border-[#5F9598] focus:outline-none text-[#F3F4F4] placeholder-[#F3F4F4]/35 transition-colors caret-[#5F9598]"
             placeholder="Type a message..."
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => handleTyping(e.target.value)}
           />
           <button
             type="button"

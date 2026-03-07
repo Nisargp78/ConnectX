@@ -5,6 +5,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime , formatDate} from "../lib/format";
 import MessageActions from "./MessageActions";
 import MessageStatusIcon from "./MessageStatusIcon";
+import TypingIndicator from "./TypingIndicator";
 
 const Messages = () => {
    const {
@@ -13,6 +14,7 @@ const Messages = () => {
     selectedUser,
     subscribeToMessages,
     unsubscribeFromMessages,
+    typingUsers,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
@@ -33,7 +35,7 @@ const Messages = () => {
     if (messageEndRef.current && messages) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, typingUsers]);
 
   const renderMessage = (message, idx) => {
     const messageDay = new Date(message.createdAt).toDateString();
@@ -62,7 +64,6 @@ const Messages = () => {
         
         <div
           className={`flex ${isSender ? "justify-end" : "justify-start"}`}
-          ref={isLast ? messageEndRef : null}
         >
           <div
           className={`flex items-end gap-2 md:gap-3 max-w-[85%] md:max-w-[80%] ${isSender ? "flex-row-reverse" : ""} group`}
@@ -129,6 +130,8 @@ const Messages = () => {
   return (
     <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-2 md:space-y-4 scrollbar-thin">
       {messages.map((message, idx) => renderMessage(message, idx))}
+      <TypingIndicator />
+      <div ref={messageEndRef} />
     </div>
   );
 };
