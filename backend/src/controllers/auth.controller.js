@@ -117,15 +117,9 @@ export const subscribePush = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const existing = user.pushSubscriptions.find(
-      (item) => item.endpoint === subscription.endpoint
-    );
-
-    if (!existing) {
-      // Remove all old subscriptions and add only the new one
-      user.pushSubscriptions = [subscription];
-      await user.save();
-    }
+    // Always keep only the current subscription (replace all old ones)
+    user.pushSubscriptions = [subscription];
+    await user.save();
 
     res.status(200).json({ message: "Push subscription saved" });
   } catch (error) {
