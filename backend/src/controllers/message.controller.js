@@ -4,6 +4,7 @@ import Message from "../models/message.model.js";
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketIds, io } from "../lib/socket.js";
 import { filterAbusiveWords } from "../lib/profanity.js";
+import { sendWebPush } from "../lib/push.js";
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -169,6 +170,50 @@ export const sendMessage = async (req, res) => {
           deliveredAt: newMessage.deliveredAt,
         });
       });
+    } else {
+      const receiver = await User.findById(receiverId).select("pushSubscriptions");
+      const senderName = req.user.fullName || "New message";
+      const body =
+        filteredText?.trim() || (imageUrl ? "Sent you an image" : "Sent you a message");
+
+      if (receiver?.pushSubscriptions?.length) {
+        const invalidEndpoints = [];
+
+        await Promise.all(
+          receiver.pushSubscriptions.map(async (subscription) => {
+            try {
+              await sendWebPush(subscription, {
+                title: senderName,
+                body,
+                icon: "/CX.png",
+                badge: "/CX.png",
+                data: {
+                  senderId: senderId.toString(),
+                  senderName,
+                  receiverId: receiverId.toString(),
+                  messageId: newMessage._id.toString(),
+                  url: "/",
+                },
+              });
+            } catch (pushError) {
+              const statusCode = pushError?.statusCode;
+              if (statusCode === 404 || statusCode === 410) {
+                invalidEndpoints.push(subscription.endpoint);
+              }
+            }
+          })
+        );
+
+        if (invalidEndpoints.length > 0) {
+          await User.findByIdAndUpdate(receiverId, {
+            $pull: {
+              pushSubscriptions: {
+                endpoint: { $in: invalidEndpoints },
+              },
+            },
+          });
+        }
+      }
     }
 
     res.status(201).json(newMessage);

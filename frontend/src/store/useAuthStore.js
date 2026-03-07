@@ -4,6 +4,10 @@ import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore";
 import { showChatNotification } from "../utils/notifications";
+import {
+  registerPushSubscription,
+  unregisterPushSubscription,
+} from "../utils/push";
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
@@ -15,6 +19,7 @@ export const useAuthStore = create((set, get) => ({
   isCheckingAuth: true,
   onlineUsers: [],
   socket: null,
+  isPushRegistered: false,
 
   checkAuth: async () => {
     try {
@@ -22,6 +27,7 @@ export const useAuthStore = create((set, get) => ({
 
       set({ authUser: res.data });
       get().connectSocket();
+      get().setupPushNotifications();
     } catch (error) {
       console.log("Error in checkAuth:", error);
       set({ authUser: null });
@@ -37,6 +43,7 @@ export const useAuthStore = create((set, get) => ({
       set({ authUser: res.data });
       toast.success("Account created successfully");
       get().connectSocket();
+      get().setupPushNotifications();
     } catch (error) {
       toast.error(error.response.data.message);
     } finally {
@@ -52,6 +59,7 @@ export const useAuthStore = create((set, get) => ({
       toast.success("Logged in successfully");
 
       get().connectSocket();
+      get().setupPushNotifications();
     } catch (error) {
       toast.error(error.response.data.message);
     } finally {
@@ -63,12 +71,35 @@ export const useAuthStore = create((set, get) => ({
     try {
       // Disconnect socket first to ensure immediate offline status
       get().disconnectSocket();
+      await get().teardownPushNotifications();
       
       await axiosInstance.post("/auth/logout");
       set({ authUser: null });
       toast.success("Logged out successfully");
     } catch (error) {
       toast.error(error.response.data.message);
+    }
+  },
+
+  setupPushNotifications: async () => {
+    const { authUser, isPushRegistered } = get();
+    if (!authUser || isPushRegistered) return;
+
+    try {
+      await registerPushSubscription();
+      set({ isPushRegistered: true });
+    } catch (error) {
+      console.log("Push setup skipped:", error?.message || error);
+    }
+  },
+
+  teardownPushNotifications: async () => {
+    try {
+      await unregisterPushSubscription();
+    } catch (error) {
+      console.log("Push teardown skipped:", error?.message || error);
+    } finally {
+      set({ isPushRegistered: false });
     }
   },
 

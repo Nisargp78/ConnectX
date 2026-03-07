@@ -1,6 +1,7 @@
 import { generateToken } from "../lib/jwt.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
+import { getVapidPublicKey } from "../lib/push.js";
 
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
@@ -88,6 +89,68 @@ export const checkAuth = (req, res) => {
     res.status(200).json(req.user);
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const getPushPublicKey = (req, res) => {
+  try {
+    const key = getVapidPublicKey();
+    res.status(200).json({ publicKey: key });
+  } catch (error) {
+    console.log("Error in getPushPublicKey controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const subscribePush = async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    const userId = req.user._id;
+
+    if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      return res.status(400).json({ message: "Invalid push subscription" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const existing = user.pushSubscriptions.find(
+      (item) => item.endpoint === subscription.endpoint
+    );
+
+    if (!existing) {
+      user.pushSubscriptions.push(subscription);
+      await user.save();
+    }
+
+    res.status(200).json({ message: "Push subscription saved" });
+  } catch (error) {
+    console.log("Error in subscribePush controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const unsubscribePush = async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    const userId = req.user._id;
+
+    if (!endpoint) {
+      return res.status(400).json({ message: "Endpoint is required" });
+    }
+
+    await User.findByIdAndUpdate(userId, {
+      $pull: {
+        pushSubscriptions: { endpoint },
+      },
+    });
+
+    res.status(200).json({ message: "Push subscription removed" });
+  } catch (error) {
+    console.log("Error in unsubscribePush controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
