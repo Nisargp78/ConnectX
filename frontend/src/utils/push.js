@@ -41,12 +41,12 @@ export async function registerPushSubscription() {
 
     // Check HTTPS (required for service workers in production)
     if (window.location.protocol !== "https:" && !window.location.hostname?.includes("localhost")) {
-      // Production warning silently logged
+      // Production environment silently continues
     }
 
     // Request permission
     const permission = await Notification.requestPermission();
-    
+
     if (permission !== "granted") {
       return;
     }
