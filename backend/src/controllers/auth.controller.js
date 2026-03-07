@@ -108,7 +108,10 @@ export const subscribePush = async (req, res) => {
     const { subscription } = req.body;
     const userId = req.user._id;
 
+    console.log("[PUSH] Received subscription request from user:", userId.toString());
+
     if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      console.log("[PUSH] Invalid subscription format");
       return res.status(400).json({ message: "Invalid push subscription" });
     }
 
@@ -124,11 +127,14 @@ export const subscribePush = async (req, res) => {
     if (!existing) {
       user.pushSubscriptions.push(subscription);
       await user.save();
+      console.log("[PUSH] Subscription saved. User now has", user.pushSubscriptions.length, "subscriptions");
+    } else {
+      console.log("[PUSH] Subscription already exists");
     }
 
     res.status(200).json({ message: "Push subscription saved" });
   } catch (error) {
-    console.log("Error in subscribePush controller", error.message);
+    console.error("[PUSH] Error in subscribePush:", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
