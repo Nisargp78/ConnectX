@@ -8,16 +8,60 @@ import Loading from "./pages/Loading";
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./store/useAuthStore";
+import { useChatStore } from "./store/useChatStore";
 import { useEffect } from "react";
+import {
+  isTabFocused,
+  requestNotificationPermission,
+} from "./utils/notifications";
 
 import { Toaster } from "react-hot-toast";
 
 const App = () => {
   const { authUser, checkAuth, isCheckingAuth } = useAuthStore();
+  const unreadCounts = useChatStore((state) => state.unreadCounts);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
+
+  useEffect(() => {
+    const totalUnread = Object.values(unreadCounts).reduce(
+      (sum, count) => sum + count,
+      0
+    );
+
+    if (totalUnread > 0 && !isTabFocused()) {
+      document.title = `(${totalUnread}) New Message - ConnectX`;
+      return;
+    }
+
+    document.title = "ConnectX";
+  }, [unreadCounts]);
+
+  useEffect(() => {
+    const resetTitle = () => {
+      document.title = "ConnectX";
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        resetTitle();
+      }
+    };
+
+    window.addEventListener("focus", resetTitle);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", resetTitle);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   if (isCheckingAuth) {
     return <Loading />;

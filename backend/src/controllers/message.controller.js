@@ -2,7 +2,7 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 
 import cloudinary from "../lib/cloudinary.js";
-import { getReceiverSocketId, io } from "../lib/socket.js";
+import { getReceiverSocketIds, io } from "../lib/socket.js";
 import { filterAbusiveWords } from "../lib/profanity.js";
 
 export const getUsersForSidebar = async (req, res) => {
@@ -132,25 +132,43 @@ export const sendMessage = async (req, res) => {
 
     await newMessage.save();
 
-    const receiverSocketId = getReceiverSocketId(receiverId);
+    const receiverSocketIds = getReceiverSocketIds(receiverId.toString());
     
     // If receiver is online, immediately mark as delivered
-    if (receiverSocketId) {
+    if (receiverSocketIds.length > 0) {
       newMessage.status = "delivered";
       newMessage.deliveredAt = new Date();
       await newMessage.save();
-      
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+
+      const messageData = {
+        _id: newMessage._id,
+        senderId: senderId.toString(),
+        senderName: req.user.fullName,
+        receiverId: receiverId.toString(),
+        message: filteredText || "",
+        text: filteredText || "",
+        image: imageUrl || null,
+        timestamp: newMessage.createdAt,
+        createdAt: newMessage.createdAt,
+        status: newMessage.status,
+        deliveredAt: newMessage.deliveredAt,
+        readAt: newMessage.readAt,
+        isEdited: newMessage.isEdited,
+      };
+
+      receiverSocketIds.forEach((socketId) => {
+        io.to(socketId).emit("receive_message", messageData);
+      });
       
       // Notify sender that message was delivered
-      const senderSocketId = getReceiverSocketId(senderId);
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("messageStatusUpdated", {
+      const senderSocketIds = getReceiverSocketIds(senderId.toString());
+      senderSocketIds.forEach((socketId) => {
+        io.to(socketId).emit("messageStatusUpdated", {
           messageId: newMessage._id,
           status: "delivered",
           deliveredAt: newMessage.deliveredAt,
         });
-      }
+      });
     }
 
     res.status(201).json(newMessage);
@@ -176,10 +194,10 @@ export const editMessage = async (req, res) => {
     message.isEdited = true;
     await message.save();
 
-    const receiverSocketId = getReceiverSocketId(message.receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("messageEdited", message);
-    }
+    const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
+    receiverSocketIds.forEach((socketId) => {
+      io.to(socketId).emit("messageEdited", message);
+    });
 
     res.status(200).json(message);
   } catch (error) {
@@ -201,10 +219,10 @@ export const deleteMessage = async (req, res) => {
 
     await Message.findByIdAndDelete(messageId);
 
-    const receiverSocketId = getReceiverSocketId(message.receiverId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("messageDeleted", { messageId });
-    }
+    const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
+    receiverSocketIds.forEach((socketId) => {
+      io.to(socketId).emit("messageDeleted", { messageId });
+    });
 
     res.status(200).json({ message: "Message deleted successfully" });
   } catch (error) {
@@ -244,15 +262,15 @@ export const updateMessageStatus = async (req, res) => {
 
     await message.save();
 
-    const senderSocketId = getReceiverSocketId(message.senderId);
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("messageStatusUpdated", {
+    const senderSocketIds = getReceiverSocketIds(message.senderId.toString());
+    senderSocketIds.forEach((socketId) => {
+      io.to(socketId).emit("messageStatusUpdated", {
         messageId: message._id,
         status: message.status,
         deliveredAt: message.deliveredAt,
         readAt: message.readAt,
       });
-    }
+    });
 
     res.status(200).json(message);
   } catch (error) {
@@ -279,13 +297,13 @@ export const markMessagesAsDelivered = async (req, res) => {
     );
 
     // Notify the sender about delivery status
-    const senderSocketId = getReceiverSocketId(senderId);
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("messagesDelivered", {
+    const senderSocketIds = getReceiverSocketIds(senderId.toString());
+    senderSocketIds.forEach((socketId) => {
+      io.to(socketId).emit("messagesDelivered", {
         senderId,
         receiverId,
       });
-    }
+    });
 
     res.status(200).json({ message: "Messages marked as delivered" });
   } catch (error) {

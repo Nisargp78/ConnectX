@@ -55,11 +55,9 @@ export const useChatStore = create((set, get) => ({
       const res = await axiosInstance.get(`/messages/${userId}`);
       set({
         messages: res.data,
-        unreadCounts: {
-          ...get().unreadCounts,
-          [userId]: 0,
-        },
       });
+
+      get().resetUnread(userId);
       
       // Mark all sent messages as delivered
       await get().markMessagesAsDelivered(userId);
@@ -78,6 +76,28 @@ export const useChatStore = create((set, get) => ({
     } finally {
       set({ isMessagesLoading: false });
     }
+  },
+
+  incrementUnread: (userId) => {
+    if (!userId) return;
+
+    set({
+      unreadCounts: {
+        ...get().unreadCounts,
+        [userId]: (get().unreadCounts[userId] || 0) + 1,
+      },
+    });
+  },
+
+  resetUnread: (userId) => {
+    if (!userId) return;
+
+    set({
+      unreadCounts: {
+        ...get().unreadCounts,
+        [userId]: 0,
+      },
+    });
   },
 
   upsertConversationFromMessage: (message) => {
@@ -113,7 +133,7 @@ export const useChatStore = create((set, get) => ({
     });
   },
 
-  handleIncomingMessage: (newMessage) => {
+  addMessageToState: (newMessage) => {
     const authUser = useAuthStore.getState().authUser;
     if (!authUser) return;
 
@@ -129,41 +149,30 @@ export const useChatStore = create((set, get) => ({
     const isSenderChatOpen = selectedUser?._id === senderId;
 
     if (isSenderChatOpen) {
-      const alreadyExists = get().messages.some((message) => message._id === newMessage._id);
+      set((state) => {
+        const alreadyExists = state.messages.some(
+          (message) => message._id === newMessage._id
+        );
 
-      if (!alreadyExists) {
-        set({
-          messages: [...get().messages, newMessage],
-        });
-      }
+        if (alreadyExists) {
+          return { messages: state.messages };
+        }
 
-      setTimeout(() => {
-        get().markMessageAsRead(newMessage._id);
-      }, 800);
-
-      set({
-        unreadCounts: {
-          ...get().unreadCounts,
-          [senderId]: 0,
-        },
+        return {
+          messages: [...state.messages, newMessage],
+        };
       });
+
+      if (!document.hidden) {
+        setTimeout(() => {
+          get().markMessageAsRead(newMessage._id);
+        }, 800);
+
+        get().resetUnread(senderId);
+      }
 
       return;
     }
-
-    set({
-      unreadCounts: {
-        ...get().unreadCounts,
-        [senderId]: (get().unreadCounts[senderId] || 0) + 1,
-      },
-    });
-
-    const senderUser =
-      get().users.find((user) => user._id === senderId) ||
-      get().allUsers.find((user) => user._id === senderId);
-    const preview = newMessage.text || (newMessage.image ? "📷 Photo" : "New message");
-
-    toast(`${senderUser?.fullName || "New message"}: ${preview}`);
   },
   
   sendMessage: async (messageData) => {
@@ -182,12 +191,10 @@ export const useChatStore = create((set, get) => ({
   startNewChat: (user) => {
     const conversationExists = get().users.some((existingUser) => existingUser._id === user._id);
 
+    get().resetUnread(user._id);
+
     set({
       selectedUser: user,
-      unreadCounts: {
-        ...get().unreadCounts,
-        [user._id]: 0,
-      },
       users: conversationExists ? get().users : [user, ...get().users],
     });
   },
@@ -272,14 +279,11 @@ export const useChatStore = create((set, get) => ({
     socket.off("messagesDelivered");
   },
 
-  setSelectedUser: (selectedUser) =>
-    set({
-      selectedUser,
-      unreadCounts: selectedUser
-        ? {
-            ...get().unreadCounts,
-            [selectedUser._id]: 0,
-          }
-        : get().unreadCounts,
-    }),
+  setSelectedUser: (selectedUser) => {
+    if (selectedUser?._id) {
+      get().resetUnread(selectedUser._id);
+    }
+
+    set({ selectedUser });
+  },
 }));

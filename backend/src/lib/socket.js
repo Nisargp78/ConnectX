@@ -14,10 +14,19 @@ const io = new Server(server, {
 });
 
 export function getReceiverSocketId(userId) {
-  return userSocketMap[userId];
+  const socketIds = getReceiverSocketIds(userId);
+  return socketIds[0];
 }
 
-const userSocketMap = {};
+export function getReceiverSocketIds(userId) {
+  const normalizedUserId = userId?.toString();
+  if (!normalizedUserId) return [];
+
+  return Array.from(onlineUsers.get(normalizedUserId) || []);
+}
+
+const onlineUsers = new Map();
+const socketToUserMap = new Map();
 
 async function updateLastActive(userId) {
   if (!userId) return;
@@ -49,14 +58,14 @@ async function markMessagesAsDeliveredOnConnect(userId) {
 
       // Notify each sender that their messages were delivered
       undeliveredMessages.forEach((message) => {
-        const senderSocketId = getReceiverSocketId(message.senderId.toString());
-        if (senderSocketId) {
-          io.to(senderSocketId).emit("messageStatusUpdated", {
+        const senderSocketIds = getReceiverSocketIds(message.senderId.toString());
+        senderSocketIds.forEach((socketId) => {
+          io.to(socketId).emit("messageStatusUpdated", {
             messageId: message._id,
             status: "delivered",
             deliveredAt: new Date(),
           });
-        }
+        });
       });
     }
   } catch (error) {
@@ -68,19 +77,44 @@ io.on("connection", (socket) => {
 
   const userId = socket.handshake.query.userId;
   if (userId) {
-    userSocketMap[userId] = socket.id;
+    const normalizedUserId = userId.toString();
+    const existingSocketIds = onlineUsers.get(normalizedUserId) || new Set();
+    existingSocketIds.add(socket.id);
+
+    onlineUsers.set(normalizedUserId, existingSocketIds);
+    socketToUserMap.set(socket.id, normalizedUserId);
+
     updateLastActive(userId);
     markMessagesAsDeliveredOnConnect(userId);
   }
 
-  io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
 
   socket.on("disconnect", async () => {
-    console.log(`User disconnected: ${userId}`);
-    delete userSocketMap[userId];
-    const onlineUserIds = Object.keys(userSocketMap);
+    const disconnectedUserId = socketToUserMap.get(socket.id);
+    console.log(`User disconnected: ${disconnectedUserId || userId}`);
+
+    if (disconnectedUserId) {
+      const socketIds = onlineUsers.get(disconnectedUserId);
+      if (socketIds) {
+        socketIds.delete(socket.id);
+
+        if (socketIds.size === 0) {
+          onlineUsers.delete(disconnectedUserId);
+        } else {
+          onlineUsers.set(disconnectedUserId, socketIds);
+        }
+      }
+
+      socketToUserMap.delete(socket.id);
+    }
+
+    const onlineUserIds = Array.from(onlineUsers.keys());
     io.emit("getOnlineUsers", onlineUserIds);
-    await updateLastActive(userId);
+
+    if (disconnectedUserId && !onlineUsers.has(disconnectedUserId)) {
+      await updateLastActive(disconnectedUserId);
+    }
   });
 });
 

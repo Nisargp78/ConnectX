@@ -3,6 +3,7 @@ import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore";
+import { showChatNotification } from "../utils/notifications";
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
@@ -87,7 +88,16 @@ export const useAuthStore = create((set, get) => ({
 
   connectSocket: () => {
     const { authUser } = get();
-    if (!authUser || get().socket?.connected) return;
+    if (!authUser) return;
+
+    const existingSocket = get().socket;
+    if (existingSocket) {
+      // Keep a single socket instance per tab to avoid duplicate event listeners.
+      if (!existingSocket.connected) {
+        existingSocket.connect();
+      }
+      return;
+    }
 
     const socket = io(BASE_URL, {
       query: {
@@ -102,9 +112,18 @@ export const useAuthStore = create((set, get) => ({
       set({ onlineUsers: userIds});
     });
 
-    socket.on("newMessage", (newMessage) => {
+    socket.on("receive_message", (message) => {
       const chatStore = useChatStore.getState();
-      chatStore.handleIncomingMessage(newMessage);
+      chatStore.addMessageToState(message);
+
+      const senderId = message.senderId?.toString?.() || message.senderId;
+      const activeChatId = chatStore.selectedUser?._id;
+
+      if (activeChatId !== senderId || document.hidden === true) {
+        const preview = message.message || message.text || (message.image ? "Photo" : "New message");
+        showChatNotification(message.senderName, preview);
+        chatStore.incrementUnread(senderId);
+      }
     });
 
     // Global listener for message status updates (always active)
@@ -115,7 +134,10 @@ export const useAuthStore = create((set, get) => ({
   },
   disconnectSocket: () => {
     const socket = get().socket;
-    if (socket?.connected) {
+    if (socket) {
+      socket.off("getOnlineUsers");
+      socket.off("receive_message");
+      socket.off("messageStatusUpdated");
       socket.disconnect();
     }
     set({ socket: null, onlineUsers: [] });
