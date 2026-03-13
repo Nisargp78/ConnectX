@@ -1,8 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
-import { Camera, Mail, User, Lock, Edit2, X } from "lucide-react";
+import { Camera, Mail, User, Lock, Edit2, X, Languages } from "lucide-react";
 import toast from "react-hot-toast";
 import {formatDate} from '../lib/format';
+
+const LANGUAGE_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "hi", label: "Hindi" },
+  { value: "ja", label: "Japanese" },
+  { value: "zh-cn", label: "Chinese (Simplified)" },
+  { value: "ar", label: "Arabic" },
+  { value: "pt", label: "Portuguese" },
+  { value: "ru", label: "Russian" },
+];
 
 const ProfilePage = () => {
   const { authUser, isUpdatingProfile, updateProfile } = useAuthStore();
@@ -12,6 +25,13 @@ const ProfilePage = () => {
   const [fullName, setFullName] = useState(authUser?.fullName || "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [preferredLanguage, setPreferredLanguage] = useState(
+    authUser?.preferredLanguage || "en"
+  );
+
+  useEffect(() => {
+    setPreferredLanguage(authUser?.preferredLanguage || "en");
+  }, [authUser?.preferredLanguage]);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -65,6 +85,17 @@ const ProfilePage = () => {
   const cancelNameEdit = () => {
     setFullName(authUser?.fullName);
     setIsEditingName(false);
+  };
+
+  const handleUpdatePreferredLanguage = async (event) => {
+    const nextLanguage = event.target.value;
+    setPreferredLanguage(nextLanguage);
+
+    if (nextLanguage === authUser?.preferredLanguage) {
+      return;
+    }
+
+    await updateProfile({ preferredLanguage: nextLanguage });
   };
 
   return (
@@ -247,6 +278,34 @@ const ProfilePage = () => {
                     ••••••••
                   </p>
                 )}
+              </div>
+
+              <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-700/50 hover:border-cyan-600/50 transition-colors">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="p-2 bg-cyan-600/20 rounded-lg">
+                    <Languages className="w-4 h-4 text-cyan-300" />
+                  </div>
+                  <span className="text-sm text-gray-400 font-medium">
+                    Preferred Language
+                  </span>
+                </div>
+                <div className="pl-12">
+                  <select
+                    value={preferredLanguage}
+                    onChange={handleUpdatePreferredLanguage}
+                    className="w-full bg-slate-800 text-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                    disabled={isUpdatingProfile}
+                  >
+                    {LANGUAGE_OPTIONS.map((language) => (
+                      <option key={language.value} value={language.value}>
+                        {language.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Used as the default target language when you translate chat messages.
+                  </p>
+                </div>
               </div>
             </div>
 

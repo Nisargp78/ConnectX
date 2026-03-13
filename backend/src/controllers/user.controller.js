@@ -4,8 +4,9 @@ import bcrypt from "bcryptjs";
 
 export const updateProfile = async (req, res) => {
   try {
-    const { profilePic, fullName, currentPassword, newPassword } = req.body;
+    const { profilePic, fullName, currentPassword, newPassword, preferredLanguage } = req.body;
     const userId = req.user._id;
+    const languagePattern = /^[a-z]{2}(-[a-z]{2})?$/i;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -32,6 +33,20 @@ export const updateProfile = async (req, res) => {
         return res.status(400).json({ message: "Full name must be at least 2 characters" });
       }
       updateData.fullName = fullName.trim();
+    }
+
+    if (preferredLanguage !== undefined) {
+      const normalizedLanguage = String(preferredLanguage || "").trim().toLowerCase();
+
+      if (!normalizedLanguage) {
+        return res.status(400).json({ message: "Preferred language is required" });
+      }
+
+      if (!languagePattern.test(normalizedLanguage)) {
+        return res.status(400).json({ message: "Invalid preferred language code" });
+      }
+
+      updateData.preferredLanguage = normalizedLanguage;
     }
 
     // Handle password update

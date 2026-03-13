@@ -6,6 +6,7 @@ import { formatMessageTime, formatDate } from "../lib/format";
 import MessageActions from "./MessageActions";
 import MessageStatusIcon from "./MessageStatusIcon";
 import TypingIndicator from "./TypingIndicator";
+import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import { Download, FileText, Play, Loader2, RotateCcw, X } from "lucide-react";
 import { GLOBAL_CHAT_ID } from "../store/useChatStore";
@@ -105,7 +106,11 @@ const Messages = () => {
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [translationsByMessage, setTranslationsByMessage] = useState({});
+  const [showOriginalByMessage, setShowOriginalByMessage] = useState({});
+  const [translatingByMessage, setTranslatingByMessage] = useState({});
   const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
+  const preferredLanguage = (authUser?.preferredLanguage || "en").toLowerCase();
 
   useEffect(() => {
     getMessages(selectedUser._id);
@@ -124,6 +129,12 @@ const Messages = () => {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, typingUsers]);
+
+  useEffect(() => {
+    setTranslationsByMessage({});
+    setShowOriginalByMessage({});
+    setTranslatingByMessage({});
+  }, [selectedUser?._id]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -360,6 +371,71 @@ const Messages = () => {
     return null;
   };
 
+  const getMessageTranslation = (message) => {
+    if (!message?._id) return "";
+
+    const localTranslation = translationsByMessage[message._id]?.[preferredLanguage];
+    if (localTranslation) return localTranslation;
+
+    const persistedTranslations = message.translations || {};
+    return persistedTranslations[preferredLanguage] || "";
+  };
+
+  const handleTranslateMessage = async (message) => {
+    if (!message?._id || !message?.text?.trim()) {
+      return;
+    }
+
+    const existingTranslation = getMessageTranslation(message);
+    if (existingTranslation) {
+      setShowOriginalByMessage((prev) => ({
+        ...prev,
+        [message._id]: false,
+      }));
+      return;
+    }
+
+    try {
+      setTranslatingByMessage((prev) => ({
+        ...prev,
+        [message._id]: true,
+      }));
+
+      const res = await axiosInstance.post("/messages/translate", {
+        messageId: message._id,
+        text: message.text,
+        targetLanguage: preferredLanguage,
+      });
+
+      setTranslationsByMessage((prev) => ({
+        ...prev,
+        [message._id]: {
+          ...(prev[message._id] || {}),
+          [preferredLanguage]: res.data.translatedText,
+        },
+      }));
+
+      setShowOriginalByMessage((prev) => ({
+        ...prev,
+        [message._id]: false,
+      }));
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to translate message");
+    } finally {
+      setTranslatingByMessage((prev) => ({
+        ...prev,
+        [message._id]: false,
+      }));
+    }
+  };
+
+  const toggleOriginalMessage = (messageId) => {
+    setShowOriginalByMessage((prev) => ({
+      ...prev,
+      [messageId]: !prev[messageId],
+    }));
+  };
+
   const renderMessage = (message, idx) => {
     const messageDay = new Date(message.createdAt).toDateString();
     const prevMessage = messages[idx - 1];
@@ -382,12 +458,69 @@ const Messages = () => {
     const displaySenderName = isGlobalChat
       ? (isSender ? "You" : message.senderName || "Unknown user")
       : null;
+    const showAvatar = isGlobalChat;
+    const showSideMeta = !isGlobalChat;
+    const mediaContent = renderMediaContent(message);
+    const isAttachmentOnly = !message.text && Boolean(mediaContent);
+    const translatedText = !isSender ? getMessageTranslation(message) : "";
+    const isShowingTranslated = Boolean(translatedText) && !showOriginalByMessage[message._id];
+    const isTranslating = Boolean(translatingByMessage[message._id]);
+    const sideMeta = showSideMeta ? (
+      <div className="flex items-center gap-1.5 pb-1 shrink-0">
+        {isSender ? (
+          <>
+            {!message.sendState && <MessageStatusIcon status={message.status} />}
+            {!message.sendState && (
+              <MessageActions
+                message={message}
+                isSender={isSender}
+                canTranslate={!isSender && Boolean(message.text?.trim())}
+                isTranslating={isTranslating}
+                isShowingTranslated={isShowingTranslated}
+                menuAlign="left"
+                onTranslate={() =>
+                  isShowingTranslated
+                    ? toggleOriginalMessage(message._id)
+                    : handleTranslateMessage(message)
+                }
+              />
+            )}
+            <span className="text-[10px] md:text-[11px] text-slate-300/85 whitespace-nowrap">
+              {formatMessageTime(message.createdAt)}
+              {message.isEdited && <span className="ml-1">(edited)</span>}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-[10px] md:text-[11px] text-slate-300/85 whitespace-nowrap">
+              {formatMessageTime(message.createdAt)}
+              {message.isEdited && <span className="ml-1">(edited)</span>}
+            </span>
+            {!message.sendState && (
+              <MessageActions
+                message={message}
+                isSender={isSender}
+                canTranslate={!isSender && Boolean(message.text?.trim())}
+                isTranslating={isTranslating}
+                isShowingTranslated={isShowingTranslated}
+                menuAlign="right"
+                onTranslate={() =>
+                  isShowingTranslated
+                    ? toggleOriginalMessage(message._id)
+                    : handleTranslateMessage(message)
+                }
+              />
+            )}
+          </>
+        )}
+      </div>
+    ) : null;
 
     return (
       <div key={message._id} className="space-y-2">
         {showDateDivider && (
           <div className="flex justify-center">
-            <span className="px-3 py-1 text-[11px] font-medium text-slate-200 bg-slate-700/40 rounded-full border border-slate-600/60">
+            <span className="px-3 py-1 text-[11px] font-medium text-slate-100 bg-slate-900/60 rounded-full border border-slate-500/40 shadow-sm backdrop-blur-sm">
               {formatDate(message.createdAt)}
             </span>
           </div>
@@ -397,21 +530,31 @@ const Messages = () => {
           className={`flex ${isSender ? "justify-end" : "justify-start"}`}
         >
           <div
-          className={`flex items-end gap-2 md:gap-3 max-w-[85%] md:max-w-[80%] ${isSender ? "flex-row-reverse" : ""} group`}
+          className={`flex items-end gap-2 md:gap-3 max-w-[90%] md:max-w-[82%] ${isGlobalChat && isSender ? "flex-row-reverse" : ""} group`}
         >
-            <img
-              src={avatarSrc}
-              alt="profile pic"
-              className="size-7 md:size-10 rounded-full border-2 border-slate-700/50 object-cover ring-2 ring-slate-700/30"
-            />
+            {!isSender && sideMeta}
+
+            {showAvatar && (
+              <img
+                src={avatarSrc}
+                alt="profile pic"
+                className="size-7 md:size-10 rounded-full border border-cyan-200/25 object-cover ring-2 ring-black/20 shadow-md"
+              />
+            )}
 
             <div
-              className={`rounded-2xl px-2.5 md:px-4 py-1.5 md:py-2.5 text-[#F3F4F4] transition-all text-sm md:text-base 
-                ${isSender ? " bg-[#347579]" : "bg-[#1D546D]"}`}
+              className={`text-[#F3F4F4] transition-all text-sm md:text-base
+                ${
+                  isAttachmentOnly
+                    ? "bg-transparent border-transparent shadow-none p-0"
+                    : isSender
+                      ? "rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-lg border backdrop-blur-sm bg-gradient-to-br from-[#3F8A8F] via-[#347579] to-[#2B666A] border-[#8fd9d0]/20"
+                      : "rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-lg border backdrop-blur-sm bg-gradient-to-br from-[#2A6883] via-[#1F5B75] to-[#194D66] border-[#8acde8]/20"
+                }`}
             >
               
               {/* Render media (image / video / document) */}
-              {renderMediaContent(message)}
+              {mediaContent}
 
               {displaySenderName && (
                 <p className="text-[11px] font-medium text-cyan-200 mb-1 truncate">
@@ -420,31 +563,56 @@ const Messages = () => {
               )}
 
               {message.text && (
-                <div className="space-y-1">
-                  <div className="flex items-baseline justify-between gap-1 md:gap-2 flex-wrap">
-                    <span className="whitespace-pre-wrap wrap-break-words leading-relaxed flex-1 text-sm md:text-base">
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2 md:gap-3">
+                    <span className="whitespace-pre-wrap wrap-break-words leading-relaxed flex-1 text-[15px] md:text-base">
                       {message.text}
                     </span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[10px] md:text-[11px] text-slate-300/80 whitespace-nowrap">
-                        {formatMessageTime(message.createdAt)}
-                        {message.isEdited && <span className="ml-1">(edited)</span>}
-                      </span>
-                      {isSender && !message.sendState && <MessageStatusIcon status={message.status} />}
-                      {!message.sendState && (
-                        <MessageActions
-                          message={message}
-                          isSender={isSender}
-                        />
-                      )}
-                    </div>
                   </div>
+
+                  {isGlobalChat && (
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/10">
+                      {isSender && !message.sendState && <MessageStatusIcon status={message.status} />}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] md:text-[11px] text-slate-200/80 whitespace-nowrap">
+                          {formatMessageTime(message.createdAt)}
+                          {message.isEdited && <span className="ml-1">(edited)</span>}
+                        </span>
+                        {!message.sendState && (
+                          <MessageActions
+                            message={message}
+                            isSender={isSender}
+                            canTranslate={!isSender && Boolean(message.text?.trim())}
+                            isTranslating={isTranslating}
+                            isShowingTranslated={isShowingTranslated}
+                            menuAlign={isSender ? "left" : "right"}
+                            onTranslate={() =>
+                              isShowingTranslated
+                                ? toggleOriginalMessage(message._id)
+                                : handleTranslateMessage(message)
+                            }
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {isShowingTranslated && (
+                    <div className="mt-1 rounded-xl px-3 py-2 bg-black/20 border border-cyan-100/20">
+                      <p className="text-[10px] uppercase tracking-wide text-cyan-100/90 mb-1">
+                        Translated
+                      </p>
+                      <p className="text-[13px] md:text-sm text-cyan-50/95 italic leading-relaxed whitespace-pre-wrap wrap-break-words">
+                        {translatedText}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {!message.text && (
-                <div className="flex items-center justify-end gap-1 md:gap-2">
-                  <span className="text-[10px] md:text-[11px] text-slate-300/80">
+              {!message.text && isGlobalChat && (
+                <div className="flex items-center justify-end gap-1.5 md:gap-2 pt-1 border-t border-white/10">
+                  <span className="text-[10px] md:text-[11px] text-slate-200/80">
                     {formatMessageTime(message.createdAt)}
                   </span>
                   {isSender && !message.sendState && <MessageStatusIcon status={message.status} />}
@@ -452,11 +620,22 @@ const Messages = () => {
                     <MessageActions
                       message={message}
                       isSender={isSender}
+                      canTranslate={!isSender && Boolean(message.text?.trim())}
+                      isTranslating={isTranslating}
+                      isShowingTranslated={isShowingTranslated}
+                      menuAlign={isSender ? "left" : "right"}
+                      onTranslate={() =>
+                        isShowingTranslated
+                          ? toggleOriginalMessage(message._id)
+                          : handleTranslateMessage(message)
+                      }
                     />
                   )}
                 </div>
               )}
             </div>
+
+            {isSender && sideMeta}
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import express from "express";
 import { protectRoute } from "../middleware/auth.middleware.js";
-import { getMessages, getUsersForSidebar, getAllUsersForNewChat, sendMessage, editMessage, deleteMessage, updateMessageStatus, markMessagesAsDelivered, downloadFile } from "../controllers/message.controller.js";
+import { getMessages, getUsersForSidebar, getAllUsersForNewChat, sendMessage, editMessage, deleteMessage, updateMessageStatus, markMessagesAsDelivered, downloadFile, translateMessage } from "../controllers/message.controller.js";
 
 const router = express.Router();
 
@@ -10,6 +10,7 @@ router.get("/download", protectRoute, downloadFile);
 router.get("/:id", protectRoute, getMessages);
 
 router.post("/send/:id", protectRoute, sendMessage);
+router.post("/translate", protectRoute, translateMessage);
 router.put("/edit/:messageId", protectRoute, editMessage);
 router.delete("/delete/:messageId", protectRoute, deleteMessage);
 router.put("/status/:messageId", protectRoute, updateMessageStatus);

@@ -39,6 +39,11 @@ const messageSchema = new mongoose.Schema(
     readAt: {
       type: Date,
     },
+    translations: {
+      type: Map,
+      of: String,
+      default: {},
+    },
   },
   { timestamps: true }
 );

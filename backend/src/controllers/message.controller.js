@@ -5,6 +5,7 @@ import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketIds, io } from "../lib/socket.js";
 import { filterAbusiveWords } from "../lib/profanity.js";
 import { sendWebPush } from "../lib/push.js";
+import { translateText } from "../lib/translate.js";
 
 const DOC_EXTENSIONS = new Set([
   "pdf",
@@ -62,6 +63,13 @@ const IMAGE_EXTENSIONS = new Set([
   "tiff",
   "avif",
 ]);
+
+const LANGUAGE_CODE_REGEX = /^[a-z]{2}(-[a-z]{2})?$/i;
+
+const normalizeLanguageCode = (language = "en") => {
+  const normalized = String(language || "en").trim().toLowerCase();
+  return normalized || "en";
+};
 
 const buildLatestMessagePreview = (message) => {
   if (message?.text) return message.text;
@@ -414,6 +422,10 @@ export const editMessage = async (req, res) => {
     }
 
     const filteredText = text ? filterAbusiveWords(text) : text;
+    if ((message.text || "") !== (filteredText || "")) {
+      message.translations = {};
+    }
+
     message.text = filteredText;
     message.isEdited = true;
     await message.save();
@@ -427,6 +439,75 @@ export const editMessage = async (req, res) => {
   } catch (error) {
     console.log("Error in editMessage controller: ", error.message);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const translateMessage = async (req, res) => {
+  try {
+    const { messageId, text, targetLanguage = "en" } = req.body;
+    const userId = req.user._id.toString();
+    const normalizedTargetLanguage = normalizeLanguageCode(targetLanguage);
+
+    if (!LANGUAGE_CODE_REGEX.test(normalizedTargetLanguage)) {
+      return res.status(400).json({ error: "Invalid target language code" });
+    }
+
+    let sourceText = String(text || "").trim();
+    let message = null;
+
+    if (messageId) {
+      message = await Message.findById(messageId);
+
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      const senderId = message.senderId.toString();
+      const receiverId = message.receiverId.toString();
+      if (senderId !== userId && receiverId !== userId) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      sourceText = String(message.text || "").trim();
+
+      if (!sourceText) {
+        return res.status(400).json({ error: "Translation is only supported for text messages" });
+      }
+
+      const cachedTranslation = message.translations?.get?.(normalizedTargetLanguage);
+      if (cachedTranslation) {
+        return res.status(200).json({
+          translatedText: cachedTranslation,
+          targetLanguage: normalizedTargetLanguage,
+          sourceText,
+          cached: true,
+        });
+      }
+    }
+
+    if (!sourceText) {
+      return res.status(400).json({ error: "Text is required" });
+    }
+
+    const translatedText = await translateText(sourceText, normalizedTargetLanguage);
+
+    if (message) {
+      if (!message.translations) {
+        message.translations = new Map();
+      }
+      message.translations.set(normalizedTargetLanguage, translatedText);
+      await message.save();
+    }
+
+    return res.status(200).json({
+      translatedText,
+      targetLanguage: normalizedTargetLanguage,
+      sourceText,
+      cached: false,
+    });
+  } catch (error) {
+    console.log("Error in translateMessage controller: ", error.message);
+    res.status(500).json({ error: "Failed to translate message" });
   }
 };
 
