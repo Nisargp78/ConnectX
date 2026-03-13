@@ -3,6 +3,18 @@ import toast from "react-hot-toast";
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
 
+export const GLOBAL_CHAT_ID = "global_broadcast_room";
+export const GLOBAL_CHAT_USER = {
+  _id: GLOBAL_CHAT_ID,
+  fullName: "Global Chat",
+  email: "broadcast@connectx.local",
+  profilePic: "/CX.png",
+  latestMessage: "Broadcast to everyone",
+  isGlobal: true,
+};
+
+const BROADCAST_COOLDOWN_MS = 5000;
+
 const DOC_EXTENSIONS = new Set([
   "pdf",
   "doc",
@@ -178,6 +190,12 @@ export const useChatStore = create((set, get) => ({
   pendingMessagesByChat: {},
   uploadControllers: {},
   canceledMessageIds: {},
+  broadcastMeta: {
+    latestMessage: "Broadcast to everyone",
+    latestMessageAt: null,
+    unreadCount: 0,
+  },
+  broadcastCooldownUntil: 0,
 
   setUserTyping: (userId) => {
     set((state) => ({
@@ -232,6 +250,27 @@ export const useChatStore = create((set, get) => ({
   getMessages: async (userId) => {
     set({ isMessagesLoading: true });
     try {
+      if (userId === GLOBAL_CHAT_ID) {
+        const res = await axiosInstance.get("/broadcast/history");
+        const pendingForGlobal = get().pendingMessagesByChat[GLOBAL_CHAT_ID] || [];
+        set({
+          messages: mergeServerAndPendingMessages(res.data, pendingForGlobal),
+          broadcastMeta: {
+            ...get().broadcastMeta,
+            unreadCount: 0,
+            latestMessage:
+              res.data.length > 0
+                ? getLatestMessagePreview(res.data[res.data.length - 1])
+                : get().broadcastMeta.latestMessage,
+            latestMessageAt:
+              res.data.length > 0
+                ? res.data[res.data.length - 1].createdAt
+                : get().broadcastMeta.latestMessageAt,
+          },
+        });
+        return;
+      }
+
       const res = await axiosInstance.get(`/messages/${userId}`);
       const pendingForUser = get().pendingMessagesByChat[userId] || [];
       set({
@@ -262,6 +301,10 @@ export const useChatStore = create((set, get) => ({
   incrementUnread: (userId) => {
     if (!userId) return;
 
+    if (userId === GLOBAL_CHAT_ID) {
+      return;
+    }
+
     set({
       unreadCounts: {
         ...get().unreadCounts,
@@ -272,6 +315,16 @@ export const useChatStore = create((set, get) => ({
 
   resetUnread: (userId) => {
     if (!userId) return;
+
+    if (userId === GLOBAL_CHAT_ID) {
+      set({
+        broadcastMeta: {
+          ...get().broadcastMeta,
+          unreadCount: 0,
+        },
+      });
+      return;
+    }
 
     set({
       unreadCounts: {
@@ -360,6 +413,10 @@ export const useChatStore = create((set, get) => ({
     const { selectedUser } = get();
     const authUser = useAuthStore.getState().authUser;
     const receiverId = receiverIdArg || selectedUser?._id;
+
+    if (receiverId === GLOBAL_CHAT_ID || selectedUser?.isGlobal) {
+      return get().sendBroadcastMessage(messageData);
+    }
 
     if (!receiverId || !authUser) return false;
 
@@ -543,6 +600,10 @@ export const useChatStore = create((set, get) => ({
 
     const receiverId = pendingMessage.receiverId;
 
+    if (receiverId === GLOBAL_CHAT_ID) {
+      return get().sendBroadcastMessage(pendingMessage._optimisticPayload, messageId);
+    }
+
     const retryHasAttachment = Boolean(pendingMessage._optimisticPayload?.file);
     const retryController = retryHasAttachment ? new AbortController() : null;
 
@@ -639,6 +700,173 @@ export const useChatStore = create((set, get) => ({
     set({
       selectedUser: user,
       users: conversationExists ? get().users : [user, ...get().users],
+    });
+  },
+
+  sendBroadcastMessage: async (messageData, existingMessageId = null) => {
+    const authUser = useAuthStore.getState().authUser;
+    if (!authUser) return false;
+
+    const cooldownUntil = get().broadcastCooldownUntil;
+    if (Date.now() < cooldownUntil) {
+      const waitSeconds = Math.ceil((cooldownUntil - Date.now()) / 1000);
+      toast.error(`Please wait ${waitSeconds}s before sending another broadcast.`);
+      return false;
+    }
+
+    const optimisticMessage = existingMessageId
+      ? (Object.values(get().pendingMessagesByChat)
+          .flat()
+          .find((msg) => msg._id === existingMessageId) || null)
+      : buildOptimisticMessage({
+          selectedUser: GLOBAL_CHAT_USER,
+          authUser,
+          messageData,
+        });
+
+    if (!optimisticMessage) return false;
+
+    const messageId = optimisticMessage._id;
+    const hasAttachment = Boolean(messageData.file);
+    const controller = hasAttachment ? new AbortController() : null;
+
+    set((state) => {
+      const pending = upsertPendingMessageInMap(
+        state.pendingMessagesByChat,
+        GLOBAL_CHAT_ID,
+        { ...optimisticMessage, receiverId: GLOBAL_CHAT_ID, sendState: "sending" }
+      );
+
+      return {
+        pendingMessagesByChat: pending,
+        messages:
+          state.selectedUser?._id === GLOBAL_CHAT_ID
+            ? mergeServerAndPendingMessages(
+                state.messages.filter((msg) => msg._id !== messageId),
+                pending[GLOBAL_CHAT_ID] || []
+              )
+            : state.messages,
+        uploadControllers: controller
+          ? { ...state.uploadControllers, [messageId]: controller }
+          : state.uploadControllers,
+        broadcastCooldownUntil: Date.now() + BROADCAST_COOLDOWN_MS,
+      };
+    });
+
+    try {
+      const res = await axiosInstance.post(
+        "/broadcast/send",
+        messageData,
+        controller ? { signal: controller.signal } : undefined
+      );
+
+      const wasCanceled = Boolean(get().canceledMessageIds[messageId]);
+      if (wasCanceled) {
+        set((state) => ({
+          pendingMessagesByChat: removePendingMessageFromMap(
+            state.pendingMessagesByChat,
+            GLOBAL_CHAT_ID,
+            messageId
+          ),
+          messages: state.messages.filter((msg) => msg._id !== messageId && msg._id !== res.data._id),
+          uploadControllers: removeUploadController(state.uploadControllers, messageId),
+          canceledMessageIds: removeCanceledId(state.canceledMessageIds, messageId),
+        }));
+        return false;
+      }
+
+      set((state) => {
+        const updatedPending = removePendingMessageFromMap(
+          state.pendingMessagesByChat,
+          GLOBAL_CHAT_ID,
+          messageId
+        );
+
+        const mergedMessages =
+          state.selectedUser?._id === GLOBAL_CHAT_ID
+            ? mergeServerAndPendingMessages(
+                state.messages.filter((msg) => msg._id !== messageId),
+                [res.data, ...(updatedPending[GLOBAL_CHAT_ID] || [])]
+              )
+            : state.messages;
+
+        return {
+          pendingMessagesByChat: updatedPending,
+          messages: mergedMessages,
+          uploadControllers: removeUploadController(state.uploadControllers, messageId),
+          canceledMessageIds: removeCanceledId(state.canceledMessageIds, messageId),
+          broadcastMeta: {
+            ...state.broadcastMeta,
+            latestMessage: getLatestMessagePreview(res.data),
+            latestMessageAt: res.data.createdAt,
+          },
+        };
+      });
+
+      return true;
+    } catch (error) {
+      const isCanceled = error?.code === "ERR_CANCELED" || error?.name === "CanceledError";
+
+      set((state) => {
+        const updatedPending = patchPendingMessageInMap(
+          state.pendingMessagesByChat,
+          GLOBAL_CHAT_ID,
+          messageId,
+          { sendState: isCanceled ? "canceled" : "failed", receiverId: GLOBAL_CHAT_ID }
+        );
+
+        return {
+          pendingMessagesByChat: updatedPending,
+          messages:
+            state.selectedUser?._id === GLOBAL_CHAT_ID
+              ? mergeServerAndPendingMessages(
+                  state.messages.filter((msg) => msg._id !== messageId),
+                  updatedPending[GLOBAL_CHAT_ID] || []
+                )
+              : state.messages,
+          uploadControllers: removeUploadController(state.uploadControllers, messageId),
+          canceledMessageIds: isCanceled
+            ? state.canceledMessageIds
+            : removeCanceledId(state.canceledMessageIds, messageId),
+        };
+      });
+
+      if (error?.response?.status === 429) {
+        toast.error(error.response?.data?.error || "Rate limit exceeded.");
+      } else if (isCanceled) {
+        toast("Upload canceled");
+      } else {
+        toast.error(error.response?.data?.error || "Failed to send broadcast");
+      }
+
+      return false;
+    }
+  },
+
+  addBroadcastMessageToState: (broadcastMessage) => {
+    const authUser = useAuthStore.getState().authUser;
+    if (!authUser) return;
+
+    const senderId = broadcastMessage.senderId?.toString?.() || broadcastMessage.senderId;
+    const isOwnMessage = senderId === authUser._id;
+    const isGlobalOpen = get().selectedUser?._id === GLOBAL_CHAT_ID;
+
+    set((state) => {
+      const alreadyExists = state.messages.some((msg) => msg._id === broadcastMessage._id);
+
+      const nextMessages =
+        isGlobalOpen && !alreadyExists
+          ? [...state.messages, { ...broadcastMessage, receiverId: GLOBAL_CHAT_ID }]
+          : state.messages;
+
+      return {
+        messages: nextMessages,
+        broadcastMeta: {
+          latestMessage: getLatestMessagePreview(broadcastMessage),
+          latestMessageAt: broadcastMessage.createdAt,
+          unreadCount: 0,
+        },
+      };
     });
   },
 

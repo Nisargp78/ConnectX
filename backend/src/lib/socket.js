@@ -4,6 +4,8 @@ import express from "express";
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 
+export const GLOBAL_BROADCAST_ROOM = "global_broadcast";
+
 const app = express();
 const server = http.createServer(app);
 
@@ -86,6 +88,7 @@ io.on("connection", (socket) => {
 
     updateLastActive(userId);
     markMessagesAsDeliveredOnConnect(userId);
+    socket.join(GLOBAL_BROADCAST_ROOM);
   }
 
   io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
@@ -135,5 +138,9 @@ io.on("connection", (socket) => {
     }
   });
 });
+
+export const emitBroadcastMessage = (payload) => {
+  io.to(GLOBAL_BROADCAST_ROOM).emit("broadcast_message", payload);
+};
 
 export { io, app, server };

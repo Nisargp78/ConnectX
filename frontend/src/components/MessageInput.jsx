@@ -5,6 +5,7 @@ import { Paperclip, Send, X, Smile, FileText, Film, FolderOpen, Loader2 } from "
 import toast from "react-hot-toast";
 import EmojiPicker from "emoji-picker-react";
 import JSZip from "jszip";
+import { GLOBAL_CHAT_ID } from "../store/useChatStore";
 
 const formatFileSize = (bytes) => {
   if (!bytes) return "0 B";
@@ -29,8 +30,11 @@ const MessageInput = () => {
   const attachmentInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
-  const { sendMessage, selectedUser } = useChatStore();
+  const { sendMessage, selectedUser, broadcastCooldownUntil } = useChatStore();
   const { socket } = useAuthStore();
+
+  const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
+  const isBroadcastCoolingDown = isGlobalChat && Date.now() < broadcastCooldownUntil;
 
   // Accepted file types
   const ACCEPTED_TYPES = "image/*,video/*,.pdf,.doc,.docx,.zip,.rar,.7z";
@@ -156,7 +160,7 @@ const MessageInput = () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (isTypingRef.current && socket && selectedUser) {
+      if (isTypingRef.current && socket && selectedUser && !isGlobalChat) {
         socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
       }
       // Cleanup preview URLs
@@ -164,12 +168,12 @@ const MessageInput = () => {
         URL.revokeObjectURL(filePreview.previewUrl);
       }
     };
-  }, [socket, selectedUser]);
+  }, [socket, selectedUser, isGlobalChat]);
 
   const handleTyping = (value) => {
     setText(value);
 
-    if (!socket || !selectedUser) return;
+    if (!socket || !selectedUser || isGlobalChat) return;
 
     if (!isTypingRef.current && value.trim()) {
       isTypingRef.current = true;
@@ -195,7 +199,7 @@ const MessageInput = () => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    if (isTypingRef.current && socket && selectedUser) {
+    if (isTypingRef.current && socket && selectedUser && !isGlobalChat) {
       isTypingRef.current = false;
       socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
     }
@@ -275,7 +279,7 @@ const MessageInput = () => {
           <input
             type="text"
             className="w-full px-2 md:px-4 py-1.5 md:py-2.5 text-sm md:text-base rounded-xl bg-[#051923]/40 border border-slate-600/50 focus:border-[#5F9598] focus:outline-none text-[#F3F4F4] placeholder-[#F3F4F4]/35 transition-colors caret-[#5F9598]"
-            placeholder="Type a message..."
+            placeholder={isGlobalChat ? "Broadcast a message to everyone..." : "Type a message..."}
             value={text}
             onChange={(e) => handleTyping(e.target.value)}
           />
@@ -334,7 +338,8 @@ const MessageInput = () => {
         <button
           type="submit"
           className="p-1.5 md:p-2 rounded-lg bg-teal-600 hover:bg-teal-800 text-[#F3F4F4] transition-colors cursor-pointer disabled:bg-[#1D546D]/80 disabled:cursor-not-allowed flex items-center justify-center"
-          disabled={!text.trim() && !filePreview}
+          disabled={(!text.trim() && !filePreview) || isBroadcastCoolingDown}
+          title={isBroadcastCoolingDown ? "Please wait before sending another broadcast" : "Send"}
         >
           <Send className="size-4 md:size-5" />
         </button>

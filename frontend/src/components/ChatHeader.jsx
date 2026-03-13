@@ -2,13 +2,15 @@ import { X } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 import { formateDateTime } from "../lib/format";
+import { GLOBAL_CHAT_ID } from "../store/useChatStore";
 
 const ChatHeader = () => {
   const { selectedUser, setSelectedUser } = useChatStore();
   const { onlineUsers } = useAuthStore();
+  const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
 
   return (
-    <div className="p-4 border-b border-slate-700/50 bg-[#051923] sticky top-0 z-10 backdrop-blur-sm">
+    <div className={`p-4 border-b border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm ${isGlobalChat ? "bg-[#102638]" : "bg-[#051923]"}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -19,24 +21,28 @@ const ChatHeader = () => {
                 className="w-full h-full object-cover"
               />
             </div>
-            <span 
-              className={`absolute bottom-0 right-0 size-3 rounded-full ${
-                onlineUsers.includes(selectedUser._id) 
-                  ? "bg-emerald-500" 
-                  : "bg-slate-500"
-              }`} 
-            />
+            {!isGlobalChat && (
+              <span
+                className={`absolute bottom-0 right-0 size-3 rounded-full ${
+                  onlineUsers.includes(selectedUser._id)
+                    ? "bg-emerald-500"
+                    : "bg-slate-500"
+                }`}
+              />
+            )}
           </div>
 
           {/* User info */}
           <div>
             <h3 className="font-semibold text-[#F3F4F4]">{selectedUser.fullName}</h3>
             <p className="text-sm text-[#F3F4F4]/40 tracking-wide">
-              {onlineUsers.includes(selectedUser._id)
-                ? "Online"
-                : selectedUser.lastActive
-                  ? `last active at ${formateDateTime(selectedUser.lastActive)}`
-                  : "last active unknown"}
+              {isGlobalChat
+                ? "Broadcast room for all users"
+                : onlineUsers.includes(selectedUser._id)
+                  ? "Online"
+                  : selectedUser.lastActive
+                    ? `last active at ${formateDateTime(selectedUser.lastActive)}`
+                    : "last active unknown"}
             </p>
           </div>
         </div>

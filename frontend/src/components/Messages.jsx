@@ -8,6 +8,7 @@ import MessageStatusIcon from "./MessageStatusIcon";
 import TypingIndicator from "./TypingIndicator";
 import toast from "react-hot-toast";
 import { Download, FileText, Play, Loader2, RotateCcw, X } from "lucide-react";
+import { GLOBAL_CHAT_ID } from "../store/useChatStore";
 
 const API_BASE_URL =
   import.meta.env.MODE === "development"
@@ -104,6 +105,7 @@ const Messages = () => {
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
 
   useEffect(() => {
     getMessages(selectedUser._id);
@@ -369,9 +371,17 @@ const Messages = () => {
     const isSender = message.senderId === authUser._id;
     const isLast = idx === messages.length - 1;
 
-    const avatarSrc = isSender
-      ? authUser.profilePic || "/avatar.png"
-      : selectedUser.profilePic || "/avatar.png";
+    const avatarSrc = isGlobalChat
+      ? (isSender
+          ? authUser.profilePic || "/avatar.png"
+          : message.senderProfilePic || "/avatar.png")
+      : (isSender
+          ? authUser.profilePic || "/avatar.png"
+          : selectedUser.profilePic || "/avatar.png");
+
+    const displaySenderName = isGlobalChat
+      ? (isSender ? "You" : message.senderName || "Unknown user")
+      : null;
 
     return (
       <div key={message._id} className="space-y-2">
@@ -402,6 +412,12 @@ const Messages = () => {
               
               {/* Render media (image / video / document) */}
               {renderMediaContent(message)}
+
+              {displaySenderName && (
+                <p className="text-[11px] font-medium text-cyan-200 mb-1 truncate">
+                  {displaySenderName}
+                </p>
+              )}
 
               {message.text && (
                 <div className="space-y-1">

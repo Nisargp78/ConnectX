@@ -167,6 +167,11 @@ export const useAuthStore = create((set, get) => ({
       chatStore.setUserStoppedTyping(userId);
     });
 
+    socket.on("broadcast_message", (broadcastMessage) => {
+      const chatStore = useChatStore.getState();
+      chatStore.addBroadcastMessageToState(broadcastMessage);
+    });
+
     // Global listener for message status updates (always active)
     socket.on("messageStatusUpdated", ({ messageId, status, deliveredAt, readAt }) => {
       const chatStore = useChatStore.getState();
@@ -180,6 +185,7 @@ export const useAuthStore = create((set, get) => ({
       socket.off("receive_message");
       socket.off("user_typing");
       socket.off("user_stopped_typing");
+      socket.off("broadcast_message");
       socket.off("messageStatusUpdated");
       socket.disconnect();
     }

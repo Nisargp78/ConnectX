@@ -1,9 +1,33 @@
 import { Link, NavLink } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
-import { LogOut, MessageSquare, User } from "lucide-react";
+import { LogOut, MessageSquare, User, Globe } from "lucide-react";
+import { useChatStore, GLOBAL_CHAT_USER, GLOBAL_CHAT_ID } from "../store/useChatStore";
+import { useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 
 const Navbar = () => {
   const { logout } = useAuthStore();
+  const { setSelectedUser, selectedUser } = useChatStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isGlobalChatActive = selectedUser?._id === GLOBAL_CHAT_ID && location.pathname === "/";
+
+  const openGlobalChat = () => {
+    setSelectedUser(GLOBAL_CHAT_USER);
+    navigate("/");
+  };
+
+  const openChats = () => {
+    if (isGlobalChatActive) {
+      setSelectedUser(null);
+    }
+  };
+
+  const openProfile = () => {
+    if (selectedUser?._id === GLOBAL_CHAT_ID) {
+      setSelectedUser(null);
+    }
+  };
 
   return (
     <>
@@ -27,9 +51,10 @@ const Navbar = () => {
           <>
             <NavLink
               to={"/"}
+              onClick={openChats}
               className={({ isActive }) =>
                 `w-12 h-12 flex items-center justify-center gap-3 rounded-lg transition-all group hover:bg-[#1D546D]/50 hover:text-[#F3F4F4] ${
-                  isActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
+                  isActive && !isGlobalChatActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
                 }`
               }
               title="Chats"
@@ -39,6 +64,7 @@ const Navbar = () => {
             </NavLink>
             <NavLink
               to={"/profile"}
+              onClick={openProfile}
               className={({ isActive }) =>
                 `w-12 h-12 flex items-center justify-center gap-3 rounded-lg transition-all group hover:bg-[#1D546D]/50 hover:text-[#F3F4F4] ${
                   isActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
@@ -49,6 +75,16 @@ const Navbar = () => {
               <User className="size-5 shrink-0" />
               <span className="hidden">Profile</span>
             </NavLink>
+            <button
+              onClick={openGlobalChat}
+              className={`w-12 h-12 flex items-center justify-center gap-3 rounded-lg transition-all group hover:bg-[#1D546D]/50 hover:text-[#F3F4F4] cursor-pointer ${
+                isGlobalChatActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
+              }`}
+              title="Global Chat"
+            >
+              <Globe className="size-5 shrink-0" />
+              <span className="hidden">Global Chat</span>
+            </button>
           </>
         </div>
 
@@ -81,9 +117,10 @@ const Navbar = () => {
             <div className="flex items-center gap-2">
               <NavLink
                 to={"/"}
+                onClick={openChats}
                 className={({ isActive }) =>
                   `w-10 h-10 flex items-center justify-center rounded-lg transition-all hover:bg-[#1D546D]/50 hover:text-[#F3F4F4] ${
-                    isActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
+                    isActive && !isGlobalChatActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
                   }`
                 }
                 title="Chats"
@@ -92,6 +129,7 @@ const Navbar = () => {
               </NavLink>
               <NavLink
                 to={"/profile"}
+                onClick={openProfile}
                 className={({ isActive }) =>
                   `w-10 h-10 flex items-center justify-center rounded-lg transition-all hover:bg-[#1D546D]/50 hover:text-[#F3F4F4] ${
                     isActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
@@ -101,6 +139,15 @@ const Navbar = () => {
               >
                 <User className="size-5 shrink-0" />
               </NavLink>
+              <button
+                onClick={openGlobalChat}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg transition-all hover:bg-[#1D546D]/50 hover:text-[#F3F4F4] ${
+                  isGlobalChatActive ? "bg-[#1D546D] text-[#F3F4F4]" : "text-[#5F9598]"
+                }`}
+                title="Global Chat"
+              >
+                <Globe className="size-5 shrink-0" />
+              </button>
               <button
                 onClick={logout}
                 className="cursor-pointer w-10 h-10 flex items-center justify-center rounded-lg text-[#5F9598] hover:bg-[#1D546D] hover:text-[#F3F4F4] transition-all"
