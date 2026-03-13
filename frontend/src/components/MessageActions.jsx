@@ -137,7 +137,11 @@ const MessageActions = ({
               className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 text-cyan-300 hover:bg-slate-700 ${isSender && canModify ? "border-b border-slate-700" : ""} ${isTranslating ? "opacity-70 cursor-not-allowed" : ""}`}
             >
               <Languages size={14} />
-              {isTranslating ? "Translating..." : isShowingTranslated ? "Show Original" : "Translate"}
+              {isTranslating
+                ? "Translating to English..."
+                : isShowingTranslated
+                  ? "Show Original"
+                  : "Translate"}
             </button>
           )}
 

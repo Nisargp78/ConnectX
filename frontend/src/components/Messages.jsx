@@ -16,6 +16,8 @@ const API_BASE_URL =
     ? "http://localhost:5001/api"
     : "/api";
 
+const PRIMARY_TRANSLATION_LANGUAGE = "en";
+
 const formatFileSize = (bytes) => {
   if (!bytes) return "0 B";
   const k = 1024;
@@ -110,7 +112,6 @@ const Messages = () => {
   const [showOriginalByMessage, setShowOriginalByMessage] = useState({});
   const [translatingByMessage, setTranslatingByMessage] = useState({});
   const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
-  const preferredLanguage = (authUser?.preferredLanguage || "en").toLowerCase();
 
   useEffect(() => {
     getMessages(selectedUser._id);
@@ -374,11 +375,11 @@ const Messages = () => {
   const getMessageTranslation = (message) => {
     if (!message?._id) return "";
 
-    const localTranslation = translationsByMessage[message._id]?.[preferredLanguage];
+    const localTranslation = translationsByMessage[message._id]?.[PRIMARY_TRANSLATION_LANGUAGE];
     if (localTranslation) return localTranslation;
 
     const persistedTranslations = message.translations || {};
-    return persistedTranslations[preferredLanguage] || "";
+    return persistedTranslations[PRIMARY_TRANSLATION_LANGUAGE] || "";
   };
 
   const handleTranslateMessage = async (message) => {
@@ -404,14 +405,14 @@ const Messages = () => {
       const res = await axiosInstance.post("/messages/translate", {
         messageId: message._id,
         text: message.text,
-        targetLanguage: preferredLanguage,
+        targetLanguage: PRIMARY_TRANSLATION_LANGUAGE,
       });
 
       setTranslationsByMessage((prev) => ({
         ...prev,
         [message._id]: {
           ...(prev[message._id] || {}),
-          [preferredLanguage]: res.data.translatedText,
+          [PRIMARY_TRANSLATION_LANGUAGE]: res.data.translatedText,
         },
       }));
 
@@ -600,9 +601,9 @@ const Messages = () => {
                   {isShowingTranslated && (
                     <div className="mt-1 rounded-xl px-3 py-2 bg-black/20 border border-cyan-100/20">
                       <p className="text-[10px] uppercase tracking-wide text-cyan-100/90 mb-1">
-                        Translated
+                        English Translation
                       </p>
-                      <p className="text-[13px] md:text-sm text-cyan-50/95 italic leading-relaxed whitespace-pre-wrap wrap-break-words">
+                      <p className="text-[12px] md:text-[13px] text-cyan-100/85 leading-[1.65] whitespace-pre-wrap wrap-break-words">
                         {translatedText}
                       </p>
                     </div>

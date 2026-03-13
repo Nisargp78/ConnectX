@@ -5,7 +5,7 @@ import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketIds, io } from "../lib/socket.js";
 import { filterAbusiveWords } from "../lib/profanity.js";
 import { sendWebPush } from "../lib/push.js";
-import { translateText } from "../lib/translate.js";
+import { detectIndicSourceLanguage, translateText } from "../lib/translate.js";
 
 const DOC_EXTENSIONS = new Set([
   "pdf",
@@ -489,7 +489,8 @@ export const translateMessage = async (req, res) => {
       return res.status(400).json({ error: "Text is required" });
     }
 
-    const translatedText = await translateText(sourceText, normalizedTargetLanguage);
+    const sourceLanguage = detectIndicSourceLanguage(sourceText);
+    const translatedText = await translateText(sourceText, normalizedTargetLanguage, sourceLanguage);
 
     if (message) {
       if (!message.translations) {
