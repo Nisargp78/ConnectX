@@ -12,7 +12,7 @@ const MessageInput = () => {
   const fileInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
-  const { sendMessage, selectedUser } = useChatStore();
+  const { sendMessage, selectedUser, isSending } = useChatStore();
   const { socket } = useAuthStore();
 
   const handleImageChange = (e) => {
@@ -85,14 +85,16 @@ const MessageInput = () => {
     }
 
     try {
-      await sendMessage({
+      const success = await sendMessage({
         text: text.trim(),
         image: imagePreview,
       });
 
-      setText("");
-      setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (success) {
+        setText("");
+        setImagePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     } catch (error) {
       console.error("Failed to send message:", error);
     }
@@ -170,10 +172,14 @@ const MessageInput = () => {
         </div>
         <button
           type="submit"
-          className="p-1.5 md:p-2 rounded-lg bg-teal-600 hover:bg-teal-800 text-[#F3F4F4] transition-colors cursor-pointer disabled:bg-[#1D546D]/80 disabled:cursor-not-allowed"
-          disabled={!text.trim() && !imagePreview}
+          className="p-1.5 md:p-2 rounded-lg bg-teal-600 hover:bg-teal-800 text-[#F3F4F4] transition-colors cursor-pointer disabled:bg-[#1D546D]/80 disabled:cursor-not-allowed flex items-center justify-center"
+          disabled={(!text.trim() && !imagePreview) || isSending}
         >
-          <Send className="size-4 md:size-5" />
+          {isSending ? (
+            <div className="w-4 h-4 md:w-5 md:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <Send className="size-4 md:size-5" />
+          )}
         </button>
       </form>
     </div>

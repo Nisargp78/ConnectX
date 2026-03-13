@@ -15,6 +15,7 @@ const Messages = () => {
     subscribeToMessages,
     unsubscribeFromMessages,
     typingUsers,
+    isSending,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
@@ -32,10 +33,10 @@ const Messages = () => {
   ]);
 
   useEffect(() => {
-    if (messageEndRef.current && messages) {
+    if (messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, typingUsers]);
+  }, [messages, typingUsers, isSending]);
 
   const renderMessage = (message, idx) => {
     const messageDay = new Date(message.createdAt).toDateString();
@@ -130,6 +131,21 @@ const Messages = () => {
   return (
     <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-2 md:space-y-4 scrollbar-thin">
       {messages.map((message, idx) => renderMessage(message, idx))}
+      {isSending && (
+        <div className="space-y-2 opacity-60">
+          <div className="flex justify-end">
+            <div className="flex items-end gap-2 md:gap-3 max-w-[85%] md:max-w-[80%] flex-row-reverse group">
+              <div className="size-7 md:size-10 rounded-full bg-slate-700/50 animate-pulse border-2 border-slate-700/50 ring-2 ring-slate-700/30" />
+              <div className="rounded-2xl px-2.5 md:px-4 py-1.5 md:py-2.5 bg-[#347579] animate-pulse flex flex-col gap-2 min-w-[100px] md:min-w-[120px]">
+                <div className="h-3 md:h-4 bg-white/20 rounded w-full"></div>
+                <div className="flex justify-end">
+                  <div className="h-2 bg-white/20 rounded w-8"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <TypingIndicator />
       <div ref={messageEndRef} />
     </div>

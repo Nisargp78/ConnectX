@@ -12,6 +12,7 @@ export const useChatStore = create((set, get) => ({
   isUsersLoading: false,
   isAllUsersLoading: false,
   isMessagesLoading: false,
+  isSending: false,
   typingUsers: {},
 
   setUserTyping: (userId) => {
@@ -192,14 +193,19 @@ export const useChatStore = create((set, get) => ({
   
   sendMessage: async (messageData) => {
     const { selectedUser, messages } = get();
+    set({ isSending: true });
     try {
       const res = await axiosInstance.post(`/messages/send/${selectedUser._id}`, messageData);
       get().upsertConversationFromMessage(res.data);
       set({
         messages: [...messages, res.data],
       });
+      return true;
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(error.response?.data?.message || "Failed to send message");
+      return false;
+    } finally {
+      set({ isSending: false });
     }
   },
 
