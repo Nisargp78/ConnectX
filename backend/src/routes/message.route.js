@@ -1,11 +1,12 @@
 import express from "express";
 import { protectRoute } from "../middleware/auth.middleware.js";
-import { getMessages, getUsersForSidebar, getAllUsersForNewChat, sendMessage, editMessage, deleteMessage, updateMessageStatus, markMessagesAsDelivered } from "../controllers/message.controller.js";
+import { getMessages, getUsersForSidebar, getAllUsersForNewChat, sendMessage, editMessage, deleteMessage, updateMessageStatus, markMessagesAsDelivered, downloadFile } from "../controllers/message.controller.js";
 
 const router = express.Router();
 
 router.get("/users", protectRoute, getUsersForSidebar);
 router.get("/all-users", protectRoute, getAllUsersForNewChat);
+router.get("/download", protectRoute, downloadFile);
 router.get("/:id", protectRoute, getMessages);
 
 router.post("/send/:id", protectRoute, sendMessage);

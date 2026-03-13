@@ -6,6 +6,127 @@ import { getReceiverSocketIds, io } from "../lib/socket.js";
 import { filterAbusiveWords } from "../lib/profanity.js";
 import { sendWebPush } from "../lib/push.js";
 
+const DOC_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "zip",
+  "rar",
+  "7z",
+  "tar",
+  "gz",
+  "txt",
+  "csv",
+  "odt",
+  "ods",
+  "odp",
+]);
+
+const sanitizeDownloadName = (filename = "download") => {
+  const base = String(filename)
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9._-]/g, "_");
+  return base || "download";
+};
+
+const getExtensionFromName = (filename = "") => {
+  const lastPart = String(filename).split(".").pop();
+  return lastPart ? lastPart.toLowerCase() : "";
+};
+
+const VIDEO_EXTENSIONS = new Set([
+  "mp4",
+  "mov",
+  "avi",
+  "mkv",
+  "webm",
+  "m4v",
+  "flv",
+  "wmv",
+]);
+
+const IMAGE_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "ico",
+  "tiff",
+  "avif",
+]);
+
+const buildLatestMessagePreview = (message) => {
+  if (message?.text) return message.text;
+
+  if (message?.file?.type === "video") return "📹 Video";
+
+  if (message?.file?.type === "document") {
+    const fileName = message.file?.name || "Document";
+    if (fileName.toLowerCase().endsWith(".zip")) {
+      return "📁 Folder";
+    }
+    return "📄 " + fileName;
+  }
+
+  if (message?.image || message?.file) return "📷 Photo";
+
+  return "Message";
+};
+
+// Build Cloudinary URL as .../upload/fl_attachment:fileName/v123/public_id
+const buildCloudinaryAttachmentUrl = (inputUrl, safeFilename, forcedResourceType) => {
+  try {
+    const parsedUrl = new URL(inputUrl);
+    const segments = parsedUrl.pathname.split("/").filter(Boolean);
+
+    const uploadIdx = segments.findIndex((s) => s === "upload");
+    if (uploadIdx < 2) return null;
+
+    const cloudName = segments[0];
+    const currentResourceType = segments[1] || "image";
+    const deliveryType = segments[2] || "upload";
+    if (deliveryType !== "upload") return null;
+
+    const afterUpload = segments.slice(uploadIdx + 1);
+    const versionIdx = afterUpload.findIndex((s) => /^v\d+$/.test(s));
+    let versionPart = versionIdx >= 0 ? afterUpload[versionIdx] : null;
+    let publicIdParts = versionIdx >= 0 ? afterUpload.slice(versionIdx + 1) : [];
+
+    // If no version segment is present, strip transformation-like segments.
+    if (!versionPart) {
+      const firstLikelyPublicIdIdx = afterUpload.findIndex(
+        (segment) => !segment.includes(",") && !segment.includes(":")
+      );
+
+      if (firstLikelyPublicIdIdx >= 0) {
+        publicIdParts = afterUpload.slice(firstLikelyPublicIdIdx);
+      }
+    }
+
+    if (!publicIdParts.length) return null;
+
+    const resourceType = forcedResourceType || currentResourceType;
+    const attachmentPart = `fl_attachment:${encodeURIComponent(safeFilename)}`;
+    const rebuiltPath = ["", cloudName, resourceType, "upload", attachmentPart];
+
+    if (versionPart) rebuiltPath.push(versionPart);
+    rebuiltPath.push(...publicIdParts);
+
+    parsedUrl.pathname = rebuiltPath.join("/");
+    return parsedUrl.toString();
+  } catch {
+    return null;
+  }
+};
+
 export const getUsersForSidebar = async (req, res) => {
   try {
     const loggedInUserId = req.user._id;
@@ -14,7 +135,7 @@ export const getUsersForSidebar = async (req, res) => {
     const conversationMessages = await Message.find({
       $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
     })
-      .select("senderId receiverId text image createdAt")
+      .select("senderId receiverId text image file createdAt")
       .sort({ createdAt: -1 });
 
     const participantIds = [];
@@ -30,7 +151,7 @@ export const getUsersForSidebar = async (req, res) => {
         seen.add(otherUserId);
         participantIds.push(otherUserId);
         latestMessageByUser.set(otherUserId, {
-          latestMessage: message.text || (message.image ? "📷 Photo" : "Message"),
+          latestMessage: buildLatestMessagePreview(message),
           latestMessageAt: message.createdAt,
           latestMessageSenderId: senderId,
         });
@@ -111,7 +232,7 @@ export const getMessages = async (req, res) => {
 
 export const sendMessage = async (req, res) => {
   try {
-    const { text, image } = req.body;
+    const { text, image, file, fileName, fileSize } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
@@ -119,9 +240,59 @@ export const sendMessage = async (req, res) => {
     const filteredText = text ? filterAbusiveWords(text) : text;
 
     let imageUrl;
-    if (image) {
+    let fileData;
+
+    // Handle legacy image field (backward compat)
+    if (image && !file) {
       const uploadResponse = await cloudinary.uploader.upload(image);
       imageUrl = uploadResponse.secure_url;
+    }
+
+    // Handle new multi-media file upload
+    if (file) {
+      const fileExt = getExtensionFromName(fileName || "");
+      const uploadResourceType = DOC_EXTENSIONS.has(fileExt)
+        ? "raw"
+        : VIDEO_EXTENSIONS.has(fileExt)
+          ? "video"
+          : IMAGE_EXTENSIONS.has(fileExt)
+            ? "image"
+            : "auto";
+
+      const uploadResponse = await cloudinary.uploader.upload(file, {
+        resource_type: uploadResourceType,
+      });
+
+      const url = uploadResponse.secure_url;
+      const detectedFormat = uploadResponse.format || "";
+      const resourceType = uploadResponse.resource_type || "";
+
+      // Determine file type — check documents FIRST since Cloudinary
+      // classifies PDFs as resource_type "image" (it can rasterize them)
+      let fileType = "document";
+      const docFormats = Array.from(DOC_EXTENSIONS);
+      const videoFormats = Array.from(VIDEO_EXTENSIONS);
+      const imageFormats = Array.from(IMAGE_EXTENSIONS);
+
+      // Also extract extension from original filename for extra safety
+      const formatLower = detectedFormat.toLowerCase();
+
+      if (docFormats.includes(formatLower) || docFormats.includes(fileExt)) {
+        fileType = "document";
+      } else if (resourceType === "video" || videoFormats.includes(formatLower) || videoFormats.includes(fileExt)) {
+        fileType = "video";
+      } else if (resourceType === "image" || imageFormats.includes(formatLower) || imageFormats.includes(fileExt)) {
+        fileType = "image";
+        imageUrl = url; // Also set imageUrl for backward compat
+      }
+      // else: stays "document" (unknown formats default to document)
+
+      fileData = {
+        url,
+        name: fileName || uploadResponse.original_filename || "file",
+        size: fileSize || uploadResponse.bytes || 0,
+        type: fileType,
+      };
     }
 
     const newMessage = new Message({
@@ -129,9 +300,17 @@ export const sendMessage = async (req, res) => {
       receiverId,
       text: filteredText,
       image: imageUrl,
+      file: fileData,
     });
 
     await newMessage.save();
+
+    // Build description for push notifications / sidebar
+    const messagePreview = buildLatestMessagePreview({
+      text: filteredText,
+      image: imageUrl,
+      file: fileData,
+    });
 
     const receiverSocketIds = getReceiverSocketIds(receiverId.toString());
     
@@ -149,6 +328,7 @@ export const sendMessage = async (req, res) => {
         message: filteredText || "",
         text: filteredText || "",
         image: imageUrl || null,
+        file: fileData || null,
         timestamp: newMessage.createdAt,
         createdAt: newMessage.createdAt,
         status: newMessage.status,
@@ -173,8 +353,7 @@ export const sendMessage = async (req, res) => {
     } else {
       const receiver = await User.findById(receiverId).select("pushSubscriptions");
       const senderName = req.user.fullName || "New message";
-      const body =
-        filteredText?.trim() || (imageUrl ? "Sent you an image" : "Sent you a message");
+      const body = messagePreview;
 
       if (receiver?.pushSubscriptions?.length) {
         const invalidEndpoints = [];
@@ -353,6 +532,75 @@ export const markMessagesAsDelivered = async (req, res) => {
     res.status(200).json({ message: "Messages marked as delivered" });
   } catch (error) {
     console.log("Error in markMessagesAsDelivered controller: ", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const downloadFile = async (req, res) => {
+  try {
+    const { url, filename } = req.query;
+
+    if (!url) {
+      return res.status(400).json({ error: "File URL is required" });
+    }
+
+    // Only allow Cloudinary URLs for security
+    if (!url.includes("res.cloudinary.com")) {
+      return res.status(403).json({ error: "Only Cloudinary file downloads are supported" });
+    }
+
+    const safeName = sanitizeDownloadName(filename || "download");
+    const fileExt = getExtensionFromName(safeName);
+    const shouldTryRaw = DOC_EXTENSIONS.has(fileExt);
+
+    const primaryUrl = buildCloudinaryAttachmentUrl(url, safeName);
+    const rawUrl = shouldTryRaw
+      ? buildCloudinaryAttachmentUrl(url, safeName, "raw")
+      : null;
+
+    const candidateUrls = [primaryUrl, rawUrl, url].filter(Boolean);
+
+    let response = null;
+    for (const candidateUrl of candidateUrls) {
+      const candidateResponse = await fetch(candidateUrl);
+      if (candidateResponse.ok) {
+        response = candidateResponse;
+        break;
+      }
+    }
+
+    if (!response) {
+      return res.status(502).json({ error: "Failed to fetch file from storage" });
+    }
+
+    const contentType = response.headers.get("content-type") || "application/octet-stream";
+    const contentLength = response.headers.get("content-length");
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+    if (contentLength) {
+      res.setHeader("Content-Length", contentLength);
+    }
+
+    if (!response.body) {
+      const fileBuffer = Buffer.from(await response.arrayBuffer());
+      res.end(fileBuffer);
+      return;
+    }
+
+    // Stream the response body to the client
+    const reader = response.body.getReader();
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(Buffer.from(value));
+      }
+      res.end();
+    };
+    await pump();
+  } catch (error) {
+    console.log("Error in downloadFile controller: ", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 };
