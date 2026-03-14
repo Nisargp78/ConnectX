@@ -88,7 +88,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       await registerPushSubscription();
       set({ isPushRegistered: true });
-    } catch (error) {
+    } catch {
       // Silent fail - allow app to continue without push
     }
   },
@@ -96,7 +96,7 @@ export const useAuthStore = create((set, get) => ({
   teardownPushNotifications: async () => {
     try {
       await unregisterPushSubscription();
-    } catch (error) {
+    } catch {
       // Silent fail - allow logout to proceed
     } finally {
       set({ isPushRegistered: false });
@@ -172,6 +172,49 @@ export const useAuthStore = create((set, get) => ({
       chatStore.addBroadcastMessageToState(broadcastMessage);
     });
 
+    socket.on("group_message", (groupMessage) => {
+      const chatStore = useChatStore.getState();
+      chatStore.addGroupMessageToState(groupMessage);
+
+      const activeChatId = chatStore.selectedUser?._id;
+      if (activeChatId !== groupMessage.groupId || document.hidden === true) {
+        showChatNotification(
+          groupMessage.groupName || "Group message",
+          `${groupMessage.senderName || "Someone"}: ${groupMessage.text || "New message"}`
+        );
+      }
+    });
+
+    socket.on("group_member_added", ({ group }) => {
+      if (!group?._id) return;
+      const chatStore = useChatStore.getState();
+      chatStore.upsertGroupFromSocket(group);
+      socket.emit("join_group", { groupId: group._id });
+    });
+
+    socket.on("group_updated", ({ group }) => {
+      if (!group?._id) return;
+      const chatStore = useChatStore.getState();
+      chatStore.upsertGroupFromSocket(group);
+    });
+
+    socket.on("group_access_removed", ({ groupId, reason }) => {
+      if (!groupId) return;
+      const chatStore = useChatStore.getState();
+      chatStore.removeGroupFromState(groupId);
+      showChatNotification(
+        reason === "removed" ? "Removed from group" : "Left group",
+        "You no longer have access to this group."
+      );
+    });
+
+    socket.on("group_deleted", ({ groupId }) => {
+      if (!groupId) return;
+      const chatStore = useChatStore.getState();
+      chatStore.removeGroupFromState(groupId);
+      showChatNotification("Group removed", "A group you were in has been deleted.");
+    });
+
     // Global listener for message status updates (always active)
     socket.on("messageStatusUpdated", ({ messageId, status, deliveredAt, readAt }) => {
       const chatStore = useChatStore.getState();
@@ -186,6 +229,11 @@ export const useAuthStore = create((set, get) => ({
       socket.off("user_typing");
       socket.off("user_stopped_typing");
       socket.off("broadcast_message");
+      socket.off("group_message");
+      socket.off("group_member_added");
+      socket.off("group_updated");
+      socket.off("group_access_removed");
+      socket.off("group_deleted");
       socket.off("messageStatusUpdated");
       socket.disconnect();
     }

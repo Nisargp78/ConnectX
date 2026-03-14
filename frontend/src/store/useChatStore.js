@@ -4,6 +4,8 @@ import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
 
 export const GLOBAL_CHAT_ID = "global_broadcast_room";
+export const SIDEBAR_MODE_CHATS = "chats";
+export const SIDEBAR_MODE_GROUPS = "groups";
 export const GLOBAL_CHAT_USER = {
   _id: GLOBAL_CHAT_ID,
   fullName: "Global Chat",
@@ -125,7 +127,8 @@ const removePendingMessageFromMap = (pendingMap, receiverId, messageId) => {
   const updated = current.filter((item) => item._id !== messageId);
 
   if (!updated.length) {
-    const { [receiverId]: _removed, ...rest } = pendingMap;
+    const rest = { ...pendingMap };
+    delete rest[receiverId];
     return rest;
   }
 
@@ -149,13 +152,15 @@ const patchPendingMessageInMap = (pendingMap, receiverId, messageId, patch) => {
 
 const removeUploadController = (controllers, messageId) => {
   if (!controllers?.[messageId]) return controllers;
-  const { [messageId]: _removed, ...rest } = controllers;
+  const rest = { ...controllers };
+  delete rest[messageId];
   return rest;
 };
 
 const removeCanceledId = (canceledMap, messageId) => {
   if (!canceledMap?.[messageId]) return canceledMap;
-  const { [messageId]: _removed, ...rest } = canceledMap;
+  const rest = { ...canceledMap };
+  delete rest[messageId];
   return rest;
 };
 
@@ -177,14 +182,32 @@ const getLatestMessagePreview = (message) => {
   return "Message";
 };
 
+const normalizeGroup = (group) => ({
+  ...group,
+  isGroup: true,
+  adminId: group.adminId || group.admin?._id || group.admin || null,
+  adminIds:
+    group.adminIds ||
+    (Array.isArray(group.admins)
+      ? group.admins.map((admin) => admin?._id || admin).filter(Boolean)
+      : []),
+  createdById: group.createdById || group.createdBy?._id || group.createdBy || null,
+  fullName: group.name,
+  profilePic: group.avatar || "/avatar.png",
+  latestMessage: group.latestMessage || "Start a group conversation",
+});
+
 export const useChatStore = create((set, get) => ({
   messages: [],
   users: [],
+  groups: [],
   allUsers: [],
   unreadCounts: {},
   selectedUser: null,
+  sidebarMode: SIDEBAR_MODE_CHATS,
   isUsersLoading: false,
   isAllUsersLoading: false,
+  isGroupsLoading: false,
   isMessagesLoading: false,
   typingUsers: {},
   pendingMessagesByChat: {},
@@ -235,6 +258,163 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+  getGroups: async () => {
+    set({ isGroupsLoading: true });
+    try {
+      const res = await axiosInstance.get("/groups");
+      const normalizedGroups = res.data.map(normalizeGroup);
+      set({ groups: normalizedGroups });
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to fetch groups");
+    } finally {
+      set({ isGroupsLoading: false });
+    }
+  },
+
+  createGroup: async ({ name, description, avatar, memberIds }) => {
+    try {
+      const res = await axiosInstance.post("/groups", {
+        name,
+        description,
+        avatar,
+        members: memberIds,
+      });
+
+      const createdGroup = {
+        ...normalizeGroup(res.data),
+        latestMessage: "Group created",
+      };
+
+      set((state) => ({
+        groups: [createdGroup, ...state.groups.filter((group) => group._id !== createdGroup._id)],
+      }));
+
+      const socket = useAuthStore.getState().socket;
+      socket?.emit("join_group", { groupId: createdGroup._id });
+
+      return createdGroup;
+    } catch (error) {
+      const message = error.response?.data?.error || "Failed to create group";
+      toast.error(message);
+      return null;
+    }
+  },
+
+  addMemberToGroup: async (groupId, memberId) => {
+    try {
+      const res = await axiosInstance.put(`/groups/${groupId}/members`, { memberId });
+      const updatedGroup = normalizeGroup(res.data);
+
+      set((state) => ({
+        groups: state.groups.map((group) => (group._id === groupId ? { ...group, ...updatedGroup } : group)),
+      }));
+
+      return updatedGroup;
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to add member");
+      return null;
+    }
+  },
+
+  addMembersToGroup: async (groupId, memberIds) => {
+    try {
+      const res = await axiosInstance.put(`/groups/${groupId}/add-members`, { memberIds });
+      const updatedGroup = normalizeGroup(res.data.group);
+
+      set((state) => ({
+        groups: state.groups.map((group) => (group._id === groupId ? { ...group, ...updatedGroup } : group)),
+        selectedUser:
+          state.selectedUser?._id === groupId
+            ? { ...state.selectedUser, ...updatedGroup }
+            : state.selectedUser,
+      }));
+
+      toast.success(res.data.message || "Members added successfully");
+      return updatedGroup;
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to add members");
+      return null;
+    }
+  },
+
+  removeMemberFromGroup: async (groupId, memberId) => {
+    try {
+      const res = await axiosInstance.put(`/groups/${groupId}/remove-member`, { memberId });
+      const updatedGroup = normalizeGroup(res.data.group);
+
+      set((state) => ({
+        groups: state.groups.map((group) => (group._id === groupId ? { ...group, ...updatedGroup } : group)),
+        selectedUser:
+          state.selectedUser?._id === groupId
+            ? { ...state.selectedUser, ...updatedGroup }
+            : state.selectedUser,
+      }));
+
+      toast.success(res.data.message || "Member removed successfully");
+      return updatedGroup;
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to remove member");
+      return null;
+    }
+  },
+
+  promoteMemberToAdmin: async (groupId, memberId) => {
+    try {
+      const res = await axiosInstance.put(`/groups/${groupId}/add-admin`, { memberId });
+      const updatedGroup = normalizeGroup(res.data.group);
+
+      set((state) => ({
+        groups: state.groups.map((group) => (group._id === groupId ? { ...group, ...updatedGroup } : group)),
+        selectedUser:
+          state.selectedUser?._id === groupId
+            ? { ...state.selectedUser, ...updatedGroup }
+            : state.selectedUser,
+      }));
+
+      toast.success(res.data.message || "Admin added successfully");
+      return updatedGroup;
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to add admin");
+      return null;
+    }
+  },
+
+  leaveGroup: async (groupId) => {
+    try {
+      const res = await axiosInstance.delete(`/groups/${groupId}/leave`);
+
+      set((state) => ({
+        groups: state.groups.filter((group) => group._id !== groupId),
+        selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
+        messages: state.selectedUser?._id === groupId ? [] : state.messages,
+      }));
+
+      toast.success(res.data.message || "Left group");
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to leave group");
+      return false;
+    }
+  },
+
+  deleteGroup: async (groupId) => {
+    try {
+      const res = await axiosInstance.delete(`/groups/${groupId}`);
+
+      set((state) => ({
+        groups: state.groups.filter((group) => group._id !== groupId),
+        selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
+        messages: state.selectedUser?._id === groupId ? [] : state.messages,
+      }));
+
+      toast.success(res.data.message || "Group deleted");
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed to delete group");
+      return false;
+    }
+  },
+
   getAllUsers: async () => {
     set({ isAllUsersLoading: true });
     try {
@@ -250,6 +430,8 @@ export const useChatStore = create((set, get) => ({
   getMessages: async (userId) => {
     set({ isMessagesLoading: true });
     try {
+      const selectedUser = get().selectedUser;
+
       if (userId === GLOBAL_CHAT_ID) {
         const res = await axiosInstance.get("/broadcast/history");
         const pendingForGlobal = get().pendingMessagesByChat[GLOBAL_CHAT_ID] || [];
@@ -271,11 +453,17 @@ export const useChatStore = create((set, get) => ({
         return;
       }
 
-      const res = await axiosInstance.get(`/messages/${userId}`);
+      const res = await axiosInstance.get(
+        selectedUser?.isGroup ? `/messages/group/${userId}` : `/messages/${userId}`
+      );
       const pendingForUser = get().pendingMessagesByChat[userId] || [];
       set({
         messages: mergeServerAndPendingMessages(res.data, pendingForUser),
       });
+
+      if (selectedUser?.isGroup) {
+        return;
+      }
 
       get().resetUnread(userId);
       
@@ -416,6 +604,17 @@ export const useChatStore = create((set, get) => ({
 
     if (receiverId === GLOBAL_CHAT_ID || selectedUser?.isGlobal) {
       return get().sendBroadcastMessage(messageData);
+    }
+
+    if (selectedUser?.isGroup) {
+      try {
+        const res = await axiosInstance.post(`/messages/send-group/${receiverId}`, messageData);
+        get().addGroupMessageToState(res.data);
+        return true;
+      } catch (error) {
+        toast.error(error.response?.data?.error || "Failed to send group message");
+        return false;
+      }
     }
 
     if (!receiverId || !authUser) return false;
@@ -847,8 +1046,6 @@ export const useChatStore = create((set, get) => ({
     const authUser = useAuthStore.getState().authUser;
     if (!authUser) return;
 
-    const senderId = broadcastMessage.senderId?.toString?.() || broadcastMessage.senderId;
-    const isOwnMessage = senderId === authUser._id;
     const isGlobalOpen = get().selectedUser?._id === GLOBAL_CHAT_ID;
 
     set((state) => {
@@ -868,6 +1065,65 @@ export const useChatStore = create((set, get) => ({
         },
       };
     });
+  },
+
+  addGroupMessageToState: (groupMessage) => {
+    const authUser = useAuthStore.getState().authUser;
+    if (!authUser) return;
+
+    const selectedUser = get().selectedUser;
+    const isGroupOpen = selectedUser?._id === groupMessage.groupId;
+
+    set((state) => {
+      const alreadyExists = state.messages.some((msg) => msg._id === groupMessage._id);
+      const nextMessages = isGroupOpen && !alreadyExists ? [...state.messages, groupMessage] : state.messages;
+
+      const updatedGroups = state.groups.map((group) => {
+        if (group._id !== groupMessage.groupId) return group;
+
+        return {
+          ...group,
+          latestMessage: getLatestMessagePreview(groupMessage),
+          latestMessageAt: groupMessage.createdAt,
+        };
+      });
+
+      return {
+        messages: nextMessages,
+        groups: updatedGroups.sort((a, b) => {
+          const aTime = new Date(a.latestMessageAt || 0).getTime();
+          const bTime = new Date(b.latestMessageAt || 0).getTime();
+          return bTime - aTime;
+        }),
+      };
+    });
+  },
+
+  upsertGroupFromSocket: (incomingGroup) => {
+    const normalizedGroup = normalizeGroup(incomingGroup);
+
+    set((state) => {
+      const existing = state.groups.some((group) => group._id === normalizedGroup._id);
+      const nextGroups = existing
+        ? state.groups.map((group) => (group._id === normalizedGroup._id ? { ...group, ...normalizedGroup } : group))
+        : [normalizedGroup, ...state.groups];
+
+      return {
+        groups: nextGroups,
+        selectedUser:
+          state.selectedUser?._id === normalizedGroup._id
+            ? { ...state.selectedUser, ...normalizedGroup }
+            : state.selectedUser,
+      };
+    });
+  },
+
+  removeGroupFromState: (groupId) => {
+    set((state) => ({
+      groups: state.groups.filter((group) => group._id !== groupId),
+      selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
+      messages: state.selectedUser?._id === groupId ? [] : state.messages,
+    }));
   },
 
   markMessagesAsDelivered: async (senderId) => {
@@ -929,7 +1185,7 @@ export const useChatStore = create((set, get) => ({
       get().updateMessageStatus(messageId, status, deliveredAt, readAt);
     });
 
-    socket.on("messagesDelivered", ({ senderId, receiverId }) => {
+    socket.on("messagesDelivered", ({ senderId }) => {
       set({
         messages: get().messages.map((msg) =>
           msg.senderId === senderId && msg.status === "sent"
@@ -956,5 +1212,9 @@ export const useChatStore = create((set, get) => ({
     }
 
     set({ selectedUser });
+  },
+
+  setSidebarMode: (mode) => {
+    set({ sidebarMode: mode });
   },
 }));

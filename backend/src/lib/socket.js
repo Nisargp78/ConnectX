@@ -3,6 +3,7 @@ import http from "http";
 import express from "express";
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
+import Group from "../models/group.model.js";
 
 export const GLOBAL_BROADCAST_ROOM = "global_broadcast";
 
@@ -75,6 +76,27 @@ async function markMessagesAsDeliveredOnConnect(userId) {
   }
 }
 
+async function joinUserGroups(socket, userId) {
+  try {
+    const groups = await Group.find({ members: userId }).select("_id").lean();
+    groups.forEach((group) => {
+      socket.join(group._id.toString());
+    });
+  } catch (error) {
+    console.log("Error joining user groups:", error.message);
+  }
+}
+
+const canUserAccessGroup = async (userId, groupId) => {
+  try {
+    if (!userId || !groupId) return false;
+    const group = await Group.findOne({ _id: groupId, members: userId }).select("_id").lean();
+    return Boolean(group);
+  } catch {
+    return false;
+  }
+};
+
 io.on("connection", (socket) => {
 
   const userId = socket.handshake.query.userId;
@@ -89,6 +111,7 @@ io.on("connection", (socket) => {
     updateLastActive(userId);
     markMessagesAsDeliveredOnConnect(userId);
     socket.join(GLOBAL_BROADCAST_ROOM);
+    joinUserGroups(socket, userId);
   }
 
   io.emit("getOnlineUsers", Array.from(onlineUsers.keys()));
@@ -110,6 +133,28 @@ io.on("connection", (socket) => {
       });
     });
   });
+
+  socket.on("join_group", async ({ groupId }) => {
+    if (!groupId || !userId) return;
+
+    const hasAccess = await canUserAccessGroup(userId, groupId);
+    if (!hasAccess) return;
+
+    socket.join(groupId.toString());
+  });
+
+  const emitGroupMessage = async (payload) => {
+    const groupId = payload?.groupId?.toString?.() || payload?.groupId;
+    if (!groupId || !userId) return;
+
+    const hasAccess = await canUserAccessGroup(userId, groupId);
+    if (!hasAccess) return;
+
+    io.to(groupId).emit("group_message", payload);
+  };
+
+  socket.on("send_group_message", emitGroupMessage);
+  socket.on("group_message", emitGroupMessage);
 
   socket.on("disconnect", async () => {
     const disconnectedUserId = socketToUserMap.get(socket.id);
@@ -141,6 +186,46 @@ io.on("connection", (socket) => {
 
 export const emitBroadcastMessage = (payload) => {
   io.to(GLOBAL_BROADCAST_ROOM).emit("broadcast_message", payload);
+};
+
+export const emitGroupMessageToRoom = (groupId, payload) => {
+  io.to(groupId.toString()).emit("group_message", payload);
+};
+
+export const emitGroupMemberAdded = (userIds, payload) => {
+  userIds.forEach((userId) => {
+    const socketIds = getReceiverSocketIds(userId.toString());
+    socketIds.forEach((socketId) => {
+      io.to(socketId).emit("group_member_added", payload);
+    });
+  });
+};
+
+export const emitGroupDeleted = (userIds, payload) => {
+  userIds.forEach((userId) => {
+    const socketIds = getReceiverSocketIds(userId.toString());
+    socketIds.forEach((socketId) => {
+      io.to(socketId).emit("group_deleted", payload);
+    });
+  });
+};
+
+export const emitGroupUpdated = (userIds, payload) => {
+  userIds.forEach((userId) => {
+    const socketIds = getReceiverSocketIds(userId.toString());
+    socketIds.forEach((socketId) => {
+      io.to(socketId).emit("group_updated", payload);
+    });
+  });
+};
+
+export const emitGroupAccessRemoved = (userIds, payload) => {
+  userIds.forEach((userId) => {
+    const socketIds = getReceiverSocketIds(userId.toString());
+    socketIds.forEach((socketId) => {
+      io.to(socketId).emit("group_access_removed", payload);
+    });
+  });
 };
 
 export { io, app, server };

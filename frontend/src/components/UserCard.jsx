@@ -1,7 +1,10 @@
+import { Users } from "lucide-react";
+
 const UserCard = ({ user, selectedUser, onlineUsers, unreadCount, onClick }) => {
   const isSelected = selectedUser?._id === user._id;
+  const isGroup = Boolean(user?.isGroup);
   const isOnline = onlineUsers.includes(user._id);
-  const latestMessagePreview = user.latestMessage || "Start a conversation";
+  const latestMessagePreview = user.latestMessage || (isGroup ? "Start a group conversation" : "Start a conversation");
 
   return (
     <button
@@ -18,11 +21,17 @@ const UserCard = ({ user, selectedUser, onlineUsers, unreadCount, onClick }) => 
           alt={user.fullName}
           className="size-12 object-cover rounded-full ring-2 ring-slate-700/50"
         />
-        <span
-          className={`absolute bottom-0 right-0 size-3 rounded-full ${
-            isOnline ? "bg-[#27b588]" : "bg-[#658789]"
-          }`}
-        />
+        {isGroup ? (
+          <span className="absolute bottom-0 right-0 size-5 rounded-full bg-[#0f3f57] border border-[#1f90a9] flex items-center justify-center">
+            <Users className="size-3 text-[#7dd4ea]" />
+          </span>
+        ) : (
+          <span
+            className={`absolute bottom-0 right-0 size-3 rounded-full ${
+              isOnline ? "bg-[#27b588]" : "bg-[#658789]"
+            }`}
+          />
+        )}
         {unreadCount > 0 && (
           <span className="lg:hidden absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-[#21b8c0] text-[#051923] text-[10px] font-semibold flex items-center justify-center border border-[#0b2434]">
             {unreadCount > 99 ? "99+" : unreadCount}

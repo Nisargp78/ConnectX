@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
-import { Paperclip, Send, X, Smile, FileText, Film, FolderOpen, Loader2 } from "lucide-react";
+import { Paperclip, Send, X, Smile, FileText, Film, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import EmojiPicker from "emoji-picker-react";
 import JSZip from "jszip";
@@ -34,6 +34,7 @@ const MessageInput = () => {
   const { socket } = useAuthStore();
 
   const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
+  const isGroupChat = Boolean(selectedUser?.isGroup);
   const isBroadcastCoolingDown = isGlobalChat && Date.now() < broadcastCooldownUntil;
 
   // Accepted file types
@@ -160,7 +161,7 @@ const MessageInput = () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (isTypingRef.current && socket && selectedUser && !isGlobalChat) {
+      if (isTypingRef.current && socket && selectedUser && !isGlobalChat && !isGroupChat) {
         socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
       }
       // Cleanup preview URLs
@@ -168,12 +169,12 @@ const MessageInput = () => {
         URL.revokeObjectURL(filePreview.previewUrl);
       }
     };
-  }, [socket, selectedUser, isGlobalChat]);
+  }, [socket, selectedUser, isGlobalChat, isGroupChat]);
 
   const handleTyping = (value) => {
     setText(value);
 
-    if (!socket || !selectedUser || isGlobalChat) return;
+    if (!socket || !selectedUser || isGlobalChat || isGroupChat) return;
 
     if (!isTypingRef.current && value.trim()) {
       isTypingRef.current = true;
@@ -199,7 +200,7 @@ const MessageInput = () => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    if (isTypingRef.current && socket && selectedUser && !isGlobalChat) {
+    if (isTypingRef.current && socket && selectedUser && !isGlobalChat && !isGroupChat) {
       isTypingRef.current = false;
       socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
     }
@@ -251,7 +252,7 @@ const MessageInput = () => {
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-teal-500/50 bg-[#051923]/60 shadow-lg shadow-teal-500/10">
               <FileText className="size-6 text-teal-400 shrink-0" />
               <div className="min-w-0">
-                <p className="text-xs text-[#F3F4F4] truncate max-w-[120px]">{filePreview.name}</p>
+                <p className="text-xs text-[#F3F4F4] truncate max-w-30">{filePreview.name}</p>
                 <p className="text-[10px] text-slate-400">{formatFileSize(filePreview.size)}</p>
               </div>
             </div>
@@ -279,7 +280,13 @@ const MessageInput = () => {
           <input
             type="text"
             className="w-full px-2 md:px-4 py-1.5 md:py-2.5 text-sm md:text-base rounded-xl bg-[#051923]/40 border border-slate-600/50 focus:border-[#5F9598] focus:outline-none text-[#F3F4F4] placeholder-[#F3F4F4]/35 transition-colors caret-[#5F9598]"
-            placeholder={isGlobalChat ? "Broadcast a message to everyone..." : "Type a message..."}
+            placeholder={
+              isGlobalChat
+                ? "Broadcast a message to everyone..."
+                : isGroupChat
+                  ? "Message this group..."
+                  : "Type a message..."
+            }
             value={text}
             onChange={(e) => handleTyping(e.target.value)}
           />
@@ -331,7 +338,6 @@ const MessageInput = () => {
             onChange={handleAttachmentChange}
             multiple
             webkitdirectory={pickerMode === "folder" ? "" : undefined}
-            directory={pickerMode === "folder" ? "" : undefined}
           />
 
         </div>

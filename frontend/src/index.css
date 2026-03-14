@@ -19,6 +19,32 @@ body {
 	transition: background-color 150ms ease, color 150ms ease;
 }
 
+/* Global scrollbar styles to match chat container */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: #347579 #061E29;
+}
+
+*::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+	background: #061E29;
+	border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+	background: #347579;
+	border-radius: 10px;
+	transition: background 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background: #3d8589;
+}
+
 /* Custom Scrollbar Styles */
 .scrollbar-thin::-webkit-scrollbar {
 	width: 8px;

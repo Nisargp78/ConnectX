@@ -112,6 +112,14 @@ const Messages = () => {
   const [showOriginalByMessage, setShowOriginalByMessage] = useState({});
   const [translatingByMessage, setTranslatingByMessage] = useState({});
   const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
+  const isGroupChat = Boolean(selectedUser?.isGroup);
+  const authUserId = authUser?._id?.toString?.() || "";
+
+  const getMessageSenderId = (message) =>
+    message?.sender?._id?.toString?.()
+    || message?.senderId?._id?.toString?.()
+    || message?.senderId?.toString?.()
+    || "";
 
   useEffect(() => {
     getMessages(selectedUser._id);
@@ -155,7 +163,7 @@ const Messages = () => {
     // New file field — video
     if (file?.type === "video" && file?.url) {
       return (
-        <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-[280px] md:max-w-[320px]">
+        <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-70 md:max-w-80">
           <video
             src={file.url}
             controls
@@ -182,7 +190,7 @@ const Messages = () => {
     // New file field — document
     if (file?.type === "document" && (file?.url || message?.sendState === "sending" || message?.sendState === "failed")) {
       return (
-        <div className="mb-2 flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-black/20 border border-[#5F9598]/30 max-w-[260px] md:max-w-[280px]">
+        <div className="mb-2 flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-black/20 border border-[#5F9598]/30 max-w-65 md:max-w-70">
           <div className="w-9 h-9 rounded-lg bg-teal-500/20 flex items-center justify-center shrink-0">
             <FileText className="size-5 text-teal-400" />
           </div>
@@ -232,7 +240,7 @@ const Messages = () => {
     const imagePreviewUrl = file?.url || message.image;
     if (file?.type === "image" && (imagePreviewUrl || message?.sendState === "sending" || message?.sendState === "failed")) {
       return (
-        <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-[280px] md:max-w-[320px]">
+        <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-70 md:max-w-80">
           {imagePreviewUrl ? (
             <img
               src={imagePreviewUrl}
@@ -307,7 +315,7 @@ const Messages = () => {
       if (isDoc) {
         const guessedName = url.split("/").pop().split("?")[0] || "Document";
         return (
-          <div className="mb-2 flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-black/20 border border-[#5F9598]/30 max-w-[260px] md:max-w-[280px]">
+          <div className="mb-2 flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-black/20 border border-[#5F9598]/30 max-w-65 md:max-w-70">
             <div className="w-9 h-9 rounded-lg bg-teal-500/20 flex items-center justify-center shrink-0">
               <FileText className="size-5 text-teal-400" />
             </div>
@@ -328,7 +336,7 @@ const Messages = () => {
       if (isVideo) {
         const guessedName = url.split("/").pop().split("?")[0] || "Video";
         return (
-          <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-[280px] md:max-w-[320px]">
+          <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-70 md:max-w-80">
             <video src={url} controls className="w-full rounded-lg" preload="metadata" />
             <div className="flex items-center justify-between px-2 py-1.5 bg-black/30">
               <div className="flex items-center gap-1 min-w-0">
@@ -349,7 +357,7 @@ const Messages = () => {
 
       // It's a real image
       return (
-        <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-[280px] md:max-w-[320px]">
+        <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-70 md:max-w-80">
           <img
             src={message.image}
             alt="Attachment"
@@ -445,10 +453,9 @@ const Messages = () => {
       : null;
 
     const showDateDivider = idx === 0 || messageDay !== prevMessageDay;
-    const isSender = message.senderId === authUser._id;
-    const isLast = idx === messages.length - 1;
+    const isSender = authUserId.length > 0 && getMessageSenderId(message) === authUserId;
 
-    const avatarSrc = isGlobalChat
+    const avatarSrc = (isGlobalChat || isGroupChat)
       ? (isSender
           ? authUser.profilePic || "/avatar.png"
           : message.senderProfilePic || "/avatar.png")
@@ -456,11 +463,13 @@ const Messages = () => {
           ? authUser.profilePic || "/avatar.png"
           : selectedUser.profilePic || "/avatar.png");
 
-    const displaySenderName = isGlobalChat
-      ? (isSender ? "You" : message.senderName || "Unknown user")
-      : null;
+    const displaySenderName = isGroupChat
+      ? (isSender ? null : message.senderName || message.sender?.fullName || "Unknown user")
+      : isGlobalChat
+        ? (isSender ? "You" : message.senderName || "Unknown user")
+        : null;
     const showAvatar = isGlobalChat;
-    const showSideMeta = !isGlobalChat;
+    const showSideMeta = !isGlobalChat && !isGroupChat;
     const mediaContent = renderMediaContent(message);
     const isAttachmentOnly = !message.text && Boolean(mediaContent);
     const translatedText = !isSender ? getMessageTranslation(message) : "";
@@ -549,8 +558,8 @@ const Messages = () => {
                   isAttachmentOnly
                     ? "bg-transparent border-transparent shadow-none p-0"
                     : isSender
-                      ? "rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-lg border backdrop-blur-sm bg-gradient-to-br from-[#3F8A8F] via-[#347579] to-[#2B666A] border-[#8fd9d0]/20"
-                      : "rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-lg border backdrop-blur-sm bg-gradient-to-br from-[#2A6883] via-[#1F5B75] to-[#194D66] border-[#8acde8]/20"
+                      ? "rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-lg border backdrop-blur-sm bg-linear-to-br from-[#3F8A8F] via-[#347579] to-[#2B666A] border-[#8fd9d0]/20"
+                      : "rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-lg border backdrop-blur-sm bg-linear-to-br from-[#2A6883] via-[#1F5B75] to-[#194D66] border-[#8acde8]/20"
                 }`}
             >
               
@@ -571,7 +580,7 @@ const Messages = () => {
                     </span>
                   </div>
 
-                  {isGlobalChat && (
+                  {(isGlobalChat || isGroupChat) && (
                     <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/10">
                       {isSender && !message.sendState && <MessageStatusIcon status={message.status} />}
                       <div className="flex items-center gap-1 shrink-0">
@@ -611,7 +620,7 @@ const Messages = () => {
                 </div>
               )}
 
-              {!message.text && isGlobalChat && (
+              {!message.text && (isGlobalChat || isGroupChat) && (
                 <div className="flex items-center justify-end gap-1.5 md:gap-2 pt-1 border-t border-white/10">
                   <span className="text-[10px] md:text-[11px] text-slate-200/80">
                     {formatMessageTime(message.createdAt)}

@@ -10,7 +10,12 @@ const messageSchema = new mongoose.Schema(
     receiverId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+    },
+    groupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Group",
+      required: false,
     },
     text: {
       type: String,
@@ -47,6 +52,21 @@ const messageSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+messageSchema.pre("validate", function validateChatTarget(next) {
+  const hasReceiverId = Boolean(this.receiverId);
+  const hasGroupId = Boolean(this.groupId);
+
+  if (!hasReceiverId && !hasGroupId) {
+    this.invalidate("receiverId", "Message must have either receiverId or groupId");
+  }
+
+  if (hasReceiverId && hasGroupId) {
+    this.invalidate("groupId", "Message cannot target receiverId and groupId together");
+  }
+
+  next();
+});
 
 const Message = mongoose.model("Message", messageSchema);
 

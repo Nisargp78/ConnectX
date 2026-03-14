@@ -1,8 +1,9 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
+import Group from "../models/group.model.js";
 
 import cloudinary from "../lib/cloudinary.js";
-import { getReceiverSocketIds, io } from "../lib/socket.js";
+import { emitGroupMessageToRoom, getReceiverSocketIds, io } from "../lib/socket.js";
 import { filterAbusiveWords } from "../lib/profanity.js";
 import { sendWebPush } from "../lib/push.js";
 import { detectIndicSourceLanguage, translateText } from "../lib/translate.js";
@@ -141,6 +142,7 @@ export const getUsersForSidebar = async (req, res) => {
     const myId = loggedInUserId.toString();
 
     const conversationMessages = await Message.find({
+      groupId: { $exists: false },
       $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
     })
       .select("senderId receiverId text image file createdAt")
@@ -152,6 +154,7 @@ export const getUsersForSidebar = async (req, res) => {
 
     for (const message of conversationMessages) {
       const senderId = message.senderId.toString();
+      if (!message.receiverId) continue;
       const receiverId = message.receiverId.toString();
       const otherUserId = senderId === myId ? receiverId : senderId;
 
@@ -221,13 +224,40 @@ export const getAllUsersForNewChat = async (req, res) => {
 
 export const getMessages = async (req, res) => {
   try {
-    const { id: userToChatId } = req.params;
+    const { id } = req.params;
     const myId = req.user._id;
+
+    const group = await Group.findOne({
+      _id: id,
+      members: myId,
+    }).select("_id");
+
+    if (group) {
+      const groupMessages = await Message.find({ groupId: group._id })
+        .populate("senderId", "fullName profilePic")
+        .sort({ createdAt: 1 });
+
+      const mapped = groupMessages.map((message) => ({
+        ...message.toObject(),
+        senderId: message.senderId?._id?.toString?.() || message.senderId?.toString?.() || "",
+        sender: message.senderId
+          ? {
+              _id: message.senderId?._id?.toString?.() || message.senderId?.toString?.() || "",
+              fullName: message.senderId?.fullName || "Unknown user",
+              profilePic: message.senderId?.profilePic || "/avatar.png",
+            }
+          : null,
+        senderName: message.senderId?.fullName || "Unknown user",
+        senderProfilePic: message.senderId?.profilePic || "/avatar.png",
+      }));
+
+      return res.status(200).json(mapped);
+    }
 
     const messages = await Message.find({
       $or: [
-        { senderId: myId, receiverId: userToChatId },
-        { senderId: userToChatId, receiverId: myId },
+        { senderId: myId, receiverId: id },
+        { senderId: id, receiverId: myId },
       ],
     });
 
@@ -410,6 +440,95 @@ export const sendMessage = async (req, res) => {
   }
 };
 
+export const sendGroupMessage = async (req, res) => {
+  try {
+    const { text, image, file, fileName, fileSize } = req.body;
+    const { groupId } = req.params;
+    const senderId = req.user._id;
+
+    const group = await Group.findOne({ _id: groupId, members: senderId })
+      .populate("members", "_id")
+      .select("_id name members");
+
+    if (!group) {
+      return res.status(403).json({ error: "You are not a member of this group" });
+    }
+
+    const filteredText = text ? filterAbusiveWords(text) : text;
+
+    let imageUrl;
+    let fileData;
+
+    if (image && !file) {
+      const uploadResponse = await cloudinary.uploader.upload(image);
+      imageUrl = uploadResponse.secure_url;
+    }
+
+    if (file) {
+      const fileExt = getExtensionFromName(fileName || "");
+      const uploadResourceType = DOC_EXTENSIONS.has(fileExt)
+        ? "raw"
+        : VIDEO_EXTENSIONS.has(fileExt)
+          ? "video"
+          : IMAGE_EXTENSIONS.has(fileExt)
+            ? "image"
+            : "auto";
+
+      const uploadResponse = await cloudinary.uploader.upload(file, {
+        resource_type: uploadResourceType,
+      });
+
+      const url = uploadResponse.secure_url;
+      const detectedFormat = uploadResponse.format || "";
+      const resourceType = uploadResponse.resource_type || "";
+      const formatLower = detectedFormat.toLowerCase();
+
+      let fileType = "document";
+      if (DOC_EXTENSIONS.has(formatLower) || DOC_EXTENSIONS.has(fileExt)) {
+        fileType = "document";
+      } else if (resourceType === "video" || VIDEO_EXTENSIONS.has(formatLower) || VIDEO_EXTENSIONS.has(fileExt)) {
+        fileType = "video";
+      } else if (resourceType === "image" || IMAGE_EXTENSIONS.has(formatLower) || IMAGE_EXTENSIONS.has(fileExt)) {
+        fileType = "image";
+        imageUrl = url;
+      }
+
+      fileData = {
+        url,
+        name: fileName || uploadResponse.original_filename || "file",
+        size: fileSize || uploadResponse.bytes || 0,
+        type: fileType,
+      };
+    }
+
+    const newMessage = await Message.create({
+      senderId,
+      groupId,
+      text: filteredText,
+      image: imageUrl,
+      file: fileData,
+      status: "delivered",
+      deliveredAt: new Date(),
+    });
+
+    const payload = {
+      ...newMessage.toObject(),
+      groupId,
+      groupName: group.name,
+      memberCount: group.members?.length || 0,
+      senderName: req.user.fullName,
+      senderProfilePic: req.user.profilePic || "/avatar.png",
+    };
+
+    emitGroupMessageToRoom(groupId, payload);
+
+    return res.status(201).json(payload);
+  } catch (error) {
+    console.log("Error in sendGroupMessage controller:", error.message);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 export const editMessage = async (req, res) => {
   try {
     const { messageId } = req.params;
@@ -430,10 +549,14 @@ export const editMessage = async (req, res) => {
     message.isEdited = true;
     await message.save();
 
-    const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
-    receiverSocketIds.forEach((socketId) => {
-      io.to(socketId).emit("messageEdited", message);
-    });
+    if (message.groupId) {
+      io.to(message.groupId.toString()).emit("messageEdited", message);
+    } else if (message.receiverId) {
+      const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
+      receiverSocketIds.forEach((socketId) => {
+        io.to(socketId).emit("messageEdited", message);
+      });
+    }
 
     res.status(200).json(message);
   } catch (error) {
@@ -462,10 +585,22 @@ export const translateMessage = async (req, res) => {
         return res.status(404).json({ error: "Message not found" });
       }
 
-      const senderId = message.senderId.toString();
-      const receiverId = message.receiverId.toString();
-      if (senderId !== userId && receiverId !== userId) {
-        return res.status(403).json({ error: "Unauthorized" });
+      if (message.groupId) {
+        const groupAccess = await Group.findOne({
+          _id: message.groupId,
+          members: userId,
+        }).select("_id");
+
+        if (!groupAccess) {
+          return res.status(403).json({ error: "Unauthorized" });
+        }
+      } else {
+        const senderId = message.senderId.toString();
+        const receiverId = message.receiverId?.toString?.() || "";
+
+        if (senderId !== userId && receiverId !== userId) {
+          return res.status(403).json({ error: "Unauthorized" });
+        }
       }
 
       sourceText = String(message.text || "").trim();
@@ -525,10 +660,14 @@ export const deleteMessage = async (req, res) => {
 
     await Message.findByIdAndDelete(messageId);
 
-    const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
-    receiverSocketIds.forEach((socketId) => {
-      io.to(socketId).emit("messageDeleted", { messageId });
-    });
+    if (message.groupId) {
+      io.to(message.groupId.toString()).emit("messageDeleted", { messageId });
+    } else if (message.receiverId) {
+      const receiverSocketIds = getReceiverSocketIds(message.receiverId.toString());
+      receiverSocketIds.forEach((socketId) => {
+        io.to(socketId).emit("messageDeleted", { messageId });
+      });
+    }
 
     res.status(200).json({ message: "Message deleted successfully" });
   } catch (error) {
