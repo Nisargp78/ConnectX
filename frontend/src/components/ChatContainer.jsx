@@ -1,12 +1,10 @@
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
 import Messages from "./Messages";
-import { useChatStore } from "../store/useChatStore";
 import { GLOBAL_CHAT_ID } from "../store/useChatStore";
 
-const ChatContainer = () => {
-  const { selectedUser } = useChatStore();
-  const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
+const ChatContainer = ({ chatUser }) => {
+  const isGlobalChat = chatUser?._id === GLOBAL_CHAT_ID;
 
   return (
     <div
@@ -16,9 +14,9 @@ const ChatContainer = () => {
           : "bg-[#061E29]"
       }`}
     >
-      <ChatHeader />
-      <Messages />
-      <MessageInput />
+      <ChatHeader chatUser={chatUser} />
+      <Messages chatUser={chatUser} />
+      <MessageInput chatUser={chatUser} />
     </div>
   );
 };

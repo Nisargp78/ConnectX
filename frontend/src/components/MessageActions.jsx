@@ -112,7 +112,7 @@ const MessageActions = ({
   }
 
   return (
-    <div ref={containerRef} className="relative z-[70]">
+    <div ref={containerRef} className="relative z-70">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-0.5 rounded-md border border-slate-500/40 bg-slate-900/35 hover:bg-slate-700/55 transition-colors"
@@ -126,7 +126,7 @@ const MessageActions = ({
 
       {isOpen && (
         <div
-          className={`absolute top-0 bg-slate-800/95 border border-slate-700 rounded-lg shadow-[0_14px_40px_rgba(2,10,22,0.55)] backdrop-blur-md z-[80] min-w-44 overflow-hidden animate-[messageMenuIn_140ms_ease-out] ${
+          className={`absolute top-0 bg-slate-800/95 border border-slate-700 rounded-lg shadow-[0_14px_40px_rgba(2,10,22,0.55)] backdrop-blur-md z-80 min-w-44 overflow-hidden animate-[messageMenuIn_140ms_ease-out] ${
             menuAlign === "left" ? "right-full mr-2 origin-right" : "left-full ml-2 origin-left"
           }`}
         >

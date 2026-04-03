@@ -21,7 +21,7 @@ const getFileCategory = (mimeType) => {
   return "document";
 };
 
-const MessageInput = () => {
+const MessageInput = ({ chatUser }) => {
   const [text, setText] = useState("");
   const [filePreview, setFilePreview] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -30,11 +30,12 @@ const MessageInput = () => {
   const attachmentInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
-  const { sendMessage, selectedUser, broadcastCooldownUntil } = useChatStore();
+  const previewVideoRef = useRef(null);
+  const { sendMessage, broadcastCooldownUntil } = useChatStore();
   const { socket } = useAuthStore();
 
-  const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
-  const isGroupChat = Boolean(selectedUser?.isGroup);
+  const isGlobalChat = chatUser?._id === GLOBAL_CHAT_ID;
+  const isGroupChat = Boolean(chatUser?.isGroup);
   const isBroadcastCoolingDown = isGlobalChat && Date.now() < broadcastCooldownUntil;
 
   // Accepted file types
@@ -161,24 +162,29 @@ const MessageInput = () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (isTypingRef.current && socket && selectedUser && !isGlobalChat && !isGroupChat) {
-        socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
+      if (isTypingRef.current && socket && chatUser && !isGlobalChat && !isGroupChat) {
+        socket.emit("user_stopped_typing", { receiverId: chatUser._id });
       }
       // Cleanup preview URLs
       if (filePreview?.previewUrl) {
         URL.revokeObjectURL(filePreview.previewUrl);
       }
+      // Pause preview video when switching chats or unmounting
+      if (previewVideoRef.current) {
+        previewVideoRef.current.pause();
+        previewVideoRef.current.currentTime = 0;
+      }
     };
-  }, [socket, selectedUser, isGlobalChat, isGroupChat]);
+  }, [socket, chatUser, isGlobalChat, isGroupChat, filePreview]);
 
   const handleTyping = (value) => {
     setText(value);
 
-    if (!socket || !selectedUser || isGlobalChat || isGroupChat) return;
+    if (!socket || !chatUser || isGlobalChat || isGroupChat) return;
 
     if (!isTypingRef.current && value.trim()) {
       isTypingRef.current = true;
-      socket.emit("user_typing", { receiverId: selectedUser._id });
+      socket.emit("user_typing", { receiverId: chatUser._id });
     }
 
     if (typingTimeoutRef.current) {
@@ -188,7 +194,7 @@ const MessageInput = () => {
     typingTimeoutRef.current = setTimeout(() => {
       if (isTypingRef.current) {
         isTypingRef.current = false;
-        socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
+        socket.emit("user_stopped_typing", { receiverId: chatUser._id });
       }
     }, 2000);
   };
@@ -200,9 +206,9 @@ const MessageInput = () => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
-    if (isTypingRef.current && socket && selectedUser && !isGlobalChat && !isGroupChat) {
+    if (isTypingRef.current && socket && chatUser && !isGlobalChat && !isGroupChat) {
       isTypingRef.current = false;
-      socket.emit("user_stopped_typing", { receiverId: selectedUser._id });
+      socket.emit("user_stopped_typing", { receiverId: chatUser._id });
     }
 
     const currentPreview = filePreview;
@@ -218,7 +224,7 @@ const MessageInput = () => {
 
     clearComposer(currentPreview);
 
-    sendMessage(messageData, selectedUser._id).catch((error) => {
+    sendMessage(messageData, chatUser._id).catch((error) => {
       console.error("Failed to send message:", error);
     });
   };
@@ -240,6 +246,7 @@ const MessageInput = () => {
           {filePreview.type === "video" && filePreview.previewUrl && (
             <div className="w-24 h-20 rounded-xl border-2 border-purple-500/50 shadow-lg shadow-purple-500/20 overflow-hidden bg-black/40 flex items-center justify-center relative">
               <video
+                ref={previewVideoRef}
                 src={filePreview.previewUrl}
                 className="w-full h-full object-cover opacity-70"
                 muted

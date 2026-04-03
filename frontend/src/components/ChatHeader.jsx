@@ -5,9 +5,8 @@ import { useChatStore } from "../store/useChatStore";
 import { formateDateTime } from "../lib/format";
 import { GLOBAL_CHAT_ID } from "../store/useChatStore";
 
-const ChatHeader = () => {
+const ChatHeader = ({ chatUser }) => {
   const {
-    selectedUser,
     setSelectedUser,
     allUsers,
     getAllUsers,
@@ -18,18 +17,18 @@ const ChatHeader = () => {
     deleteGroup,
   } = useChatStore();
   const { onlineUsers, authUser } = useAuthStore();
-  const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
-  const isGroupChat = Boolean(selectedUser?.isGroup);
-  const groupMemberCount = selectedUser?.memberCount || selectedUser?.members?.length || 0;
+  const isGlobalChat = chatUser?._id === GLOBAL_CHAT_ID;
+  const isGroupChat = Boolean(chatUser?.isGroup);
+  const groupMemberCount = chatUser?.memberCount || chatUser?.members?.length || 0;
   const [showGroupPanel, setShowGroupPanel] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [addMemberSearch, setAddMemberSearch] = useState("");
   const [pendingMemberIds, setPendingMemberIds] = useState([]);
 
-  const ownerId = selectedUser?.adminId || selectedUser?.createdById || selectedUser?.createdBy?._id || selectedUser?.createdBy || selectedUser?.admin?._id || selectedUser?.admin;
-  const adminIds = Array.isArray(selectedUser?.adminIds)
-    ? selectedUser.adminIds.map((id) => id?.toString?.() || String(id)).filter(Boolean)
+  const ownerId = chatUser?.adminId || chatUser?.createdById || chatUser?.createdBy?._id || chatUser?.createdBy || chatUser?.admin?._id || chatUser?.admin;
+  const adminIds = Array.isArray(chatUser?.adminIds)
+    ? chatUser.adminIds.map((id) => id?.toString?.() || String(id)).filter(Boolean)
     : ownerId
       ? [ownerId?.toString?.() || String(ownerId)]
       : [];
@@ -37,7 +36,7 @@ const ChatHeader = () => {
   const isGroupAdmin = Boolean(isGroupChat && authUserId && adminIds.includes(authUserId));
 
   const filteredMembers = useMemo(() => {
-    const members = selectedUser?.members || [];
+    const members = chatUser?.members || [];
     if (!memberSearch.trim()) return members;
 
     const query = memberSearch.toLowerCase();
@@ -46,11 +45,11 @@ const ChatHeader = () => {
       const email = (member.email || "").toLowerCase();
       return name.includes(query) || email.includes(query);
     });
-  }, [memberSearch, selectedUser?.members]);
+  }, [memberSearch, chatUser?.members]);
 
   const addableUsers = useMemo(() => {
     if (!isGroupChat) return [];
-    const memberIds = new Set((selectedUser?.members || []).map((member) => member._id));
+    const memberIds = new Set((chatUser?.members || []).map((member) => member._id));
     let candidates = allUsers.filter((user) => !memberIds.has(user._id));
 
     if (addMemberSearch.trim()) {
@@ -63,7 +62,7 @@ const ChatHeader = () => {
     }
 
     return candidates;
-  }, [addMemberSearch, allUsers, isGroupChat, selectedUser?.members]);
+  }, [addMemberSearch, allUsers, isGroupChat, chatUser?.members]);
 
   const openGroupPanel = () => {
     if (!isGroupChat) return;
@@ -95,9 +94,9 @@ const ChatHeader = () => {
   };
 
   const handleAddMembers = async () => {
-    if (!selectedUser?._id || pendingMemberIds.length === 0) return;
+    if (!chatUser?._id || pendingMemberIds.length === 0) return;
 
-    const updated = await addMembersToGroup(selectedUser._id, pendingMemberIds);
+    const updated = await addMembersToGroup(chatUser._id, pendingMemberIds);
     if (updated) {
       setShowAddMembers(false);
       setPendingMemberIds([]);
@@ -106,35 +105,35 @@ const ChatHeader = () => {
   };
 
   const handleLeaveGroup = async () => {
-    if (!selectedUser?._id) return;
-    const ok = await leaveGroup(selectedUser._id);
+    if (!chatUser?._id) return;
+    const ok = await leaveGroup(chatUser._id);
     if (ok) {
       closeGroupPanel();
     }
   };
 
   const handleDeleteGroup = async () => {
-    if (!selectedUser?._id) return;
+    if (!chatUser?._id) return;
     const confirmed = window.confirm("Delete this group and all its messages permanently?");
     if (!confirmed) return;
 
-    const ok = await deleteGroup(selectedUser._id);
+    const ok = await deleteGroup(chatUser._id);
     if (ok) {
       closeGroupPanel();
     }
   };
 
   const handleRemoveMember = async (memberId) => {
-    if (!selectedUser?._id || !memberId) return;
+    if (!chatUser?._id || !memberId) return;
     const confirmed = window.confirm("Remove this member from the group?");
     if (!confirmed) return;
 
-    await removeMemberFromGroup(selectedUser._id, memberId);
+    await removeMemberFromGroup(chatUser._id, memberId);
   };
 
   const handlePromoteToAdmin = async (memberId) => {
-    if (!selectedUser?._id || !memberId) return;
-    await promoteMemberToAdmin(selectedUser._id, memberId);
+    if (!chatUser?._id || !memberId) return;
+    await promoteMemberToAdmin(chatUser._id, memberId);
   };
 
   return (
@@ -145,15 +144,15 @@ const ChatHeader = () => {
           <div className="relative">
             <div className="size-12 rounded-full overflow-hidden border border-blue-500/50 ring-2 ring-blue-500/20 shadow-md shadow-[#5F9598]">
               <img
-                src={selectedUser.profilePic || "/avatar.png"}
-                alt={selectedUser.fullName}
+                src={chatUser.profilePic || "/avatar.png"}
+                alt={chatUser.fullName}
                 className="w-full h-full object-cover"
               />
             </div>
             {!isGlobalChat && !isGroupChat && (
               <span
                 className={`absolute bottom-0 right-0 size-3 rounded-full ${
-                  onlineUsers.includes(selectedUser._id)
+                  onlineUsers.includes(chatUser._id)
                     ? "bg-emerald-500"
                     : "bg-slate-500"
                 }`}
@@ -167,16 +166,16 @@ const ChatHeader = () => {
             disabled={!isGroupChat}
             className={`text-left ${isGroupChat ? "cursor-pointer" : "cursor-default"}`}
           >
-            <h3 className="font-semibold text-[#F3F4F4]">{selectedUser.fullName}</h3>
+            <h3 className="font-semibold text-[#F3F4F4]">{chatUser.fullName}</h3>
             <p className="text-sm text-[#F3F4F4]/40 tracking-wide">
               {isGlobalChat
                 ? "Broadcast room for all users"
                 : isGroupChat
                   ? `${groupMemberCount} ${groupMemberCount === 1 ? "member" : "members"}`
-                : onlineUsers.includes(selectedUser._id)
+                : onlineUsers.includes(chatUser._id)
                   ? "Online"
-                  : selectedUser.lastActive
-                    ? `last active at ${formateDateTime(selectedUser.lastActive)}`
+                  : chatUser.lastActive
+                    ? `last active at ${formateDateTime(chatUser.lastActive)}`
                     : "last active unknown"}
             </p>
           </button>
@@ -209,13 +208,13 @@ const ChatHeader = () => {
 
             <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-700/60 bg-[#051923] mb-4">
               <img
-                src={selectedUser.profilePic || "/avatar.png"}
-                alt={selectedUser.fullName}
+                src={chatUser.profilePic || "/avatar.png"}
+                alt={chatUser.fullName}
                 className="size-12 rounded-full object-cover"
               />
               <div className="min-w-0">
-                <p className="text-[#F3F4F4] font-semibold truncate">{selectedUser.fullName}</p>
-                <p className="text-xs text-slate-400">Created on {formateDateTime(selectedUser.createdAt || selectedUser.updatedAt)}</p>
+                <p className="text-[#F3F4F4] font-semibold truncate">{chatUser.fullName}</p>
+                <p className="text-xs text-slate-400">Created on {formateDateTime(chatUser.createdAt || chatUser.updatedAt)}</p>
               </div>
             </div>
 

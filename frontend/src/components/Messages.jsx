@@ -94,25 +94,24 @@ const handleDownload = async (url, filename) => {
   }
 };
 
-const Messages = () => {
+const Messages = ({ chatUser }) => {
   const {
-    messages,
+    messagesByChat,
     getMessages,
-    selectedUser,
-    subscribeToMessages,
-    unsubscribeFromMessages,
     typingUsers,
     retryMessage,
     cancelPendingUpload,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
+  const videoRefs = useRef(new Set());
   const [imagePreview, setImagePreview] = useState(null);
   const [translationsByMessage, setTranslationsByMessage] = useState({});
   const [showOriginalByMessage, setShowOriginalByMessage] = useState({});
   const [translatingByMessage, setTranslatingByMessage] = useState({});
-  const isGlobalChat = selectedUser?._id === GLOBAL_CHAT_ID;
-  const isGroupChat = Boolean(selectedUser?.isGroup);
+  const messages = messagesByChat[chatUser?._id] || [];
+  const isGlobalChat = chatUser?._id === GLOBAL_CHAT_ID;
+  const isGroupChat = Boolean(chatUser?.isGroup);
   const authUserId = authUser?._id?.toString?.() || "";
 
   const getMessageSenderId = (message) =>
@@ -122,28 +121,36 @@ const Messages = () => {
     || "";
 
   useEffect(() => {
-    getMessages(selectedUser._id);
-    subscribeToMessages();
-
-    return () => unsubscribeFromMessages();
+    if (!chatUser?._id) return;
+    getMessages(chatUser._id, chatUser);
   }, [
-    selectedUser._id,
+    chatUser,
     getMessages,
-    subscribeToMessages,
-    unsubscribeFromMessages,
   ]);
 
   useEffect(() => {
     if (messageEndRef.current) {
       messageEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, typingUsers]);
+  }, [messages, typingUsers, chatUser?._id]);
 
   useEffect(() => {
     setTranslationsByMessage({});
     setShowOriginalByMessage({});
     setTranslatingByMessage({});
-  }, [selectedUser?._id]);
+  }, [chatUser?._id]);
+
+  // Pause all videos when switching chats or unmounting
+  useEffect(() => {
+    return () => {
+      videoRefs.current.forEach((videoElement) => {
+        if (videoElement) {
+          videoElement.pause();
+          videoElement.currentTime = 0;
+        }
+      });
+    };
+  }, [chatUser?._id]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -165,6 +172,10 @@ const Messages = () => {
       return (
         <div className="mb-2 rounded-lg overflow-hidden border border-[#5F9598]/50 max-w-70 md:max-w-80">
           <video
+            ref={(el) => {
+              if (el) videoRefs.current.add(el);
+              else videoRefs.current.delete(el);
+            }}
             src={file.url}
             controls
             className="w-full rounded-lg"
@@ -461,7 +472,7 @@ const Messages = () => {
           : message.senderProfilePic || "/avatar.png")
       : (isSender
           ? authUser.profilePic || "/avatar.png"
-          : selectedUser.profilePic || "/avatar.png");
+          : chatUser.profilePic || "/avatar.png");
 
     const displaySenderName = isGroupChat
       ? (isSender ? null : message.senderName || message.sender?.fullName || "Unknown user")
@@ -691,7 +702,7 @@ const Messages = () => {
         </div>
       )}
 
-      <TypingIndicator />
+      <TypingIndicator chatUser={chatUser} />
       <div ref={messageEndRef} />
     </div>
   );

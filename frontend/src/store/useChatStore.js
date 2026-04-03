@@ -111,6 +111,61 @@ const mergeServerAndPendingMessages = (serverMessages = [], pendingMessages = []
   });
 };
 
+const upsertMessagesForChat = (messagesByChat, chatId, nextMessages) => ({
+  ...messagesByChat,
+  [chatId]: nextMessages,
+});
+
+const appendMessageForChat = (messagesByChat, chatId, message) => {
+  const current = messagesByChat[chatId] || [];
+  if (current.some((item) => item._id === message._id)) {
+    return messagesByChat;
+  }
+
+  return {
+    ...messagesByChat,
+    [chatId]: [...current, message],
+  };
+};
+
+const updateMessageInAllChats = (messagesByChat, messageId, updater) => {
+  let changed = false;
+  const next = {};
+
+  for (const [chatId, items] of Object.entries(messagesByChat || {})) {
+    let chatChanged = false;
+    const updatedItems = items.map((item) => {
+      if (item._id !== messageId) return item;
+      chatChanged = true;
+      return updater(item);
+    });
+
+    if (chatChanged) {
+      changed = true;
+      next[chatId] = updatedItems;
+    } else {
+      next[chatId] = items;
+    }
+  }
+
+  return changed ? next : messagesByChat;
+};
+
+const removeMessageFromAllChats = (messagesByChat, messageId) => {
+  let changed = false;
+  const next = {};
+
+  for (const [chatId, items] of Object.entries(messagesByChat || {})) {
+    const filtered = items.filter((item) => item._id !== messageId);
+    if (filtered.length !== items.length) {
+      changed = true;
+    }
+    next[chatId] = filtered;
+  }
+
+  return changed ? next : messagesByChat;
+};
+
 const upsertPendingMessageInMap = (pendingMap, receiverId, message) => {
   const current = pendingMap[receiverId] || [];
   const exists = current.some((item) => item._id === message._id);
@@ -199,6 +254,7 @@ const normalizeGroup = (group) => ({
 
 export const useChatStore = create((set, get) => ({
   messages: [],
+  messagesByChat: {},
   users: [],
   groups: [],
   allUsers: [],
@@ -383,11 +439,17 @@ export const useChatStore = create((set, get) => ({
     try {
       const res = await axiosInstance.delete(`/groups/${groupId}/leave`);
 
-      set((state) => ({
-        groups: state.groups.filter((group) => group._id !== groupId),
-        selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
-        messages: state.selectedUser?._id === groupId ? [] : state.messages,
-      }));
+      set((state) => {
+        const nextMessagesByChat = { ...state.messagesByChat };
+        delete nextMessagesByChat[groupId];
+
+        return {
+          groups: state.groups.filter((group) => group._id !== groupId),
+          selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
+          messages: state.selectedUser?._id === groupId ? [] : state.messages,
+          messagesByChat: nextMessagesByChat,
+        };
+      });
 
       toast.success(res.data.message || "Left group");
       return true;
@@ -401,11 +463,17 @@ export const useChatStore = create((set, get) => ({
     try {
       const res = await axiosInstance.delete(`/groups/${groupId}`);
 
-      set((state) => ({
-        groups: state.groups.filter((group) => group._id !== groupId),
-        selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
-        messages: state.selectedUser?._id === groupId ? [] : state.messages,
-      }));
+      set((state) => {
+        const nextMessagesByChat = { ...state.messagesByChat };
+        delete nextMessagesByChat[groupId];
+
+        return {
+          groups: state.groups.filter((group) => group._id !== groupId),
+          selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
+          messages: state.selectedUser?._id === groupId ? [] : state.messages,
+          messagesByChat: nextMessagesByChat,
+        };
+      });
 
       toast.success(res.data.message || "Group deleted");
       return true;
@@ -427,16 +495,18 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  getMessages: async (userId) => {
+  getMessages: async (userId, chatOverride = null) => {
     set({ isMessagesLoading: true });
     try {
-      const selectedUser = get().selectedUser;
+      const selectedUser = chatOverride || get().selectedUser;
 
       if (userId === GLOBAL_CHAT_ID) {
         const res = await axiosInstance.get("/broadcast/history");
         const pendingForGlobal = get().pendingMessagesByChat[GLOBAL_CHAT_ID] || [];
+        const mergedGlobalMessages = mergeServerAndPendingMessages(res.data, pendingForGlobal);
         set({
-          messages: mergeServerAndPendingMessages(res.data, pendingForGlobal),
+          messagesByChat: upsertMessagesForChat(get().messagesByChat, GLOBAL_CHAT_ID, mergedGlobalMessages),
+          messages: get().selectedUser?._id === GLOBAL_CHAT_ID ? mergedGlobalMessages : get().messages,
           broadcastMeta: {
             ...get().broadcastMeta,
             unreadCount: 0,
@@ -450,19 +520,21 @@ export const useChatStore = create((set, get) => ({
                 : get().broadcastMeta.latestMessageAt,
           },
         });
-        return;
+        return mergedGlobalMessages;
       }
 
       const res = await axiosInstance.get(
         selectedUser?.isGroup ? `/messages/group/${userId}` : `/messages/${userId}`
       );
       const pendingForUser = get().pendingMessagesByChat[userId] || [];
+      const mergedMessages = mergeServerAndPendingMessages(res.data, pendingForUser);
       set({
-        messages: mergeServerAndPendingMessages(res.data, pendingForUser),
+        messagesByChat: upsertMessagesForChat(get().messagesByChat, userId, mergedMessages),
+        messages: get().selectedUser?._id === userId ? mergedMessages : get().messages,
       });
 
       if (selectedUser?.isGroup) {
-        return;
+        return mergedMessages;
       }
 
       get().resetUnread(userId);
@@ -479,8 +551,11 @@ export const useChatStore = create((set, get) => ({
           }
         });
       }, 800); // 800ms delay to show delivered state
+
+      return mergedMessages;
     } catch (error) {
       toast.error(error.response.data.message);
+      return [];
     } finally {
       set({ isMessagesLoading: false });
     }
@@ -572,16 +647,17 @@ export const useChatStore = create((set, get) => ({
 
     if (isSenderChatOpen) {
       set((state) => {
-        const alreadyExists = state.messages.some(
-          (message) => message._id === newMessage._id
+        const nextMessagesByChat = appendMessageForChat(
+          state.messagesByChat,
+          senderId,
+          newMessage
         );
 
-        if (alreadyExists) {
-          return { messages: state.messages };
-        }
+        const activeChatMessages = nextMessagesByChat[senderId] || [];
 
         return {
-          messages: [...state.messages, newMessage],
+          messagesByChat: nextMessagesByChat,
+          messages: state.selectedUser?._id === senderId ? activeChatMessages : state.messages,
         };
       });
 
@@ -595,6 +671,10 @@ export const useChatStore = create((set, get) => ({
 
       return;
     }
+
+    set((state) => ({
+      messagesByChat: appendMessageForChat(state.messagesByChat, senderId, newMessage),
+    }));
   },
   
   sendMessage: async (messageData, receiverIdArg) => {
@@ -635,20 +715,31 @@ export const useChatStore = create((set, get) => ({
     const controller = hasAttachment ? new AbortController() : null;
 
     get().upsertConversationFromMessage(optimisticMessage);
-    set((state) => ({
-      pendingMessagesByChat: upsertPendingMessageInMap(
+    set((state) => {
+      const updatedPending = upsertPendingMessageInMap(
         state.pendingMessagesByChat,
         receiverId,
         optimisticMessage
-      ),
-      messages:
-        state.selectedUser?._id === receiverId
-          ? mergeServerAndPendingMessages(state.messages, [optimisticMessage])
-          : state.messages,
-      uploadControllers: controller
-        ? { ...state.uploadControllers, [optimisticMessage._id]: controller }
-        : state.uploadControllers,
-    }));
+      );
+      const currentChatMessages = state.messagesByChat[receiverId] || [];
+      const mergedForReceiver = mergeServerAndPendingMessages(
+        currentChatMessages,
+        updatedPending[receiverId] || []
+      );
+
+      return {
+        pendingMessagesByChat: updatedPending,
+        messagesByChat: upsertMessagesForChat(
+          state.messagesByChat,
+          receiverId,
+          mergedForReceiver
+        ),
+        messages: state.selectedUser?._id === receiverId ? mergedForReceiver : state.messages,
+        uploadControllers: controller
+          ? { ...state.uploadControllers, [optimisticMessage._id]: controller }
+          : state.uploadControllers,
+      };
+    });
 
     try {
       const res = await axiosInstance.post(
@@ -673,10 +764,21 @@ export const useChatStore = create((set, get) => ({
             receiverId,
             optimisticMessage._id
           ),
-          messages: state.messages.filter(
-            (message) =>
-              message._id !== optimisticMessage._id && message._id !== res.data._id
+          messagesByChat: upsertMessagesForChat(
+            state.messagesByChat,
+            receiverId,
+            (state.messagesByChat[receiverId] || []).filter(
+              (message) =>
+                message._id !== optimisticMessage._id && message._id !== res.data._id
+            )
           ),
+          messages:
+            state.selectedUser?._id === receiverId
+              ? (state.messagesByChat[receiverId] || []).filter(
+                  (message) =>
+                    message._id !== optimisticMessage._id && message._id !== res.data._id
+                )
+              : state.messages,
           uploadControllers: removeUploadController(state.uploadControllers, optimisticMessage._id),
           canceledMessageIds: removeCanceledId(state.canceledMessageIds, optimisticMessage._id),
         }));
@@ -693,19 +795,19 @@ export const useChatStore = create((set, get) => ({
           optimisticMessage._id
         );
 
-        const isCurrentChat = state.selectedUser?._id === receiverId;
+        const currentMessages = (state.messagesByChat[receiverId] || []).filter(
+          (message) => message._id !== optimisticMessage._id
+        );
 
-        const currentMessages = isCurrentChat
-          ? state.messages.filter((message) => message._id !== optimisticMessage._id)
-          : state.messages;
-
-        const nextMessages = isCurrentChat
-          ? mergeServerAndPendingMessages(currentMessages, [res.data, ...(updatedPending[receiverId] || [])])
-          : state.messages;
+        const nextMessages = mergeServerAndPendingMessages(currentMessages, [
+          res.data,
+          ...(updatedPending[receiverId] || []),
+        ]);
 
         return {
           pendingMessagesByChat: updatedPending,
-          messages: nextMessages,
+          messagesByChat: upsertMessagesForChat(state.messagesByChat, receiverId, nextMessages),
+          messages: state.selectedUser?._id === receiverId ? nextMessages : state.messages,
           uploadControllers: removeUploadController(state.uploadControllers, optimisticMessage._id),
           canceledMessageIds: removeCanceledId(state.canceledMessageIds, optimisticMessage._id),
         };
@@ -724,15 +826,18 @@ export const useChatStore = create((set, get) => ({
           { sendState: isCanceled ? "canceled" : "failed" }
         );
 
-        const isCurrentChat = state.selectedUser?._id === receiverId;
+        const currentMessages = (state.messagesByChat[receiverId] || []).filter(
+          (message) => message._id !== optimisticMessage._id
+        );
+        const nextMessages = mergeServerAndPendingMessages(
+          currentMessages,
+          updatedPending[receiverId] || []
+        );
+
         return {
           pendingMessagesByChat: updatedPending,
-          messages: isCurrentChat
-            ? mergeServerAndPendingMessages(
-                state.messages.filter((message) => message._id !== optimisticMessage._id),
-                updatedPending[receiverId] || []
-              )
-            : state.messages,
+          messagesByChat: upsertMessagesForChat(state.messagesByChat, receiverId, nextMessages),
+          messages: state.selectedUser?._id === receiverId ? nextMessages : state.messages,
           uploadControllers: removeUploadController(state.uploadControllers, optimisticMessage._id),
           canceledMessageIds: isCanceled
             ? state.canceledMessageIds
@@ -779,9 +884,14 @@ export const useChatStore = create((set, get) => ({
 
       return {
         pendingMessagesByChat: updatedPending,
+        messagesByChat: upsertMessagesForChat(
+          state.messagesByChat,
+          receiverId,
+          (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId)
+        ),
         messages:
           state.selectedUser?._id === receiverId
-            ? state.messages.filter((msg) => msg._id !== messageId)
+            ? (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId)
             : state.messages,
         uploadControllers: removeUploadController(state.uploadControllers, messageId),
         canceledMessageIds: { ...state.canceledMessageIds, [messageId]: true },
@@ -816,10 +926,18 @@ export const useChatStore = create((set, get) => ({
 
       return {
         pendingMessagesByChat: updatedPending,
+        messagesByChat: upsertMessagesForChat(
+          state.messagesByChat,
+          receiverId,
+          mergeServerAndPendingMessages(
+            (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId),
+            updatedPending[receiverId] || []
+          )
+        ),
         messages:
           state.selectedUser?._id === receiverId
             ? mergeServerAndPendingMessages(
-                state.messages.filter((msg) => msg._id !== messageId),
+                (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId),
                 updatedPending[receiverId] || []
               )
             : state.messages,
@@ -846,10 +964,18 @@ export const useChatStore = create((set, get) => ({
 
         return {
           pendingMessagesByChat: updatedPending,
+          messagesByChat: upsertMessagesForChat(
+            state.messagesByChat,
+            receiverId,
+            mergeServerAndPendingMessages(
+              (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId),
+              [res.data, ...(updatedPending[receiverId] || [])]
+            )
+          ),
           messages:
             state.selectedUser?._id === receiverId
               ? mergeServerAndPendingMessages(
-                  state.messages.filter((msg) => msg._id !== messageId),
+                  (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId),
                   [res.data, ...(updatedPending[receiverId] || [])]
                 )
               : state.messages,
@@ -870,10 +996,18 @@ export const useChatStore = create((set, get) => ({
 
         return {
           pendingMessagesByChat: updatedPending,
+          messagesByChat: upsertMessagesForChat(
+            state.messagesByChat,
+            receiverId,
+            mergeServerAndPendingMessages(
+              (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId),
+              updatedPending[receiverId] || []
+            )
+          ),
           messages:
             state.selectedUser?._id === receiverId
               ? mergeServerAndPendingMessages(
-                  state.messages.filter((msg) => msg._id !== messageId),
+                  (state.messagesByChat[receiverId] || []).filter((msg) => msg._id !== messageId),
                   updatedPending[receiverId] || []
                 )
               : state.messages,
@@ -896,10 +1030,11 @@ export const useChatStore = create((set, get) => ({
 
     get().resetUnread(user._id);
 
-    set({
+    set((state) => ({
       selectedUser: user,
-      users: conversationExists ? get().users : [user, ...get().users],
-    });
+      users: conversationExists ? state.users : [user, ...state.users],
+      messages: state.messagesByChat[user._id] || [],
+    }));
   },
 
   sendBroadcastMessage: async (messageData, existingMessageId = null) => {
@@ -935,16 +1070,19 @@ export const useChatStore = create((set, get) => ({
         GLOBAL_CHAT_ID,
         { ...optimisticMessage, receiverId: GLOBAL_CHAT_ID, sendState: "sending" }
       );
+      const mergedGlobalMessages = mergeServerAndPendingMessages(
+        (state.messagesByChat[GLOBAL_CHAT_ID] || []).filter((msg) => msg._id !== messageId),
+        pending[GLOBAL_CHAT_ID] || []
+      );
 
       return {
         pendingMessagesByChat: pending,
-        messages:
-          state.selectedUser?._id === GLOBAL_CHAT_ID
-            ? mergeServerAndPendingMessages(
-                state.messages.filter((msg) => msg._id !== messageId),
-                pending[GLOBAL_CHAT_ID] || []
-              )
-            : state.messages,
+        messagesByChat: upsertMessagesForChat(
+          state.messagesByChat,
+          GLOBAL_CHAT_ID,
+          mergedGlobalMessages
+        ),
+        messages: state.selectedUser?._id === GLOBAL_CHAT_ID ? mergedGlobalMessages : state.messages,
         uploadControllers: controller
           ? { ...state.uploadControllers, [messageId]: controller }
           : state.uploadControllers,
@@ -967,7 +1105,19 @@ export const useChatStore = create((set, get) => ({
             GLOBAL_CHAT_ID,
             messageId
           ),
-          messages: state.messages.filter((msg) => msg._id !== messageId && msg._id !== res.data._id),
+          messagesByChat: upsertMessagesForChat(
+            state.messagesByChat,
+            GLOBAL_CHAT_ID,
+            (state.messagesByChat[GLOBAL_CHAT_ID] || []).filter(
+              (msg) => msg._id !== messageId && msg._id !== res.data._id
+            )
+          ),
+          messages:
+            state.selectedUser?._id === GLOBAL_CHAT_ID
+              ? (state.messagesByChat[GLOBAL_CHAT_ID] || []).filter(
+                  (msg) => msg._id !== messageId && msg._id !== res.data._id
+                )
+              : state.messages,
           uploadControllers: removeUploadController(state.uploadControllers, messageId),
           canceledMessageIds: removeCanceledId(state.canceledMessageIds, messageId),
         }));
@@ -981,17 +1131,19 @@ export const useChatStore = create((set, get) => ({
           messageId
         );
 
-        const mergedMessages =
-          state.selectedUser?._id === GLOBAL_CHAT_ID
-            ? mergeServerAndPendingMessages(
-                state.messages.filter((msg) => msg._id !== messageId),
-                [res.data, ...(updatedPending[GLOBAL_CHAT_ID] || [])]
-              )
-            : state.messages;
+        const mergedMessages = mergeServerAndPendingMessages(
+          (state.messagesByChat[GLOBAL_CHAT_ID] || []).filter((msg) => msg._id !== messageId),
+          [res.data, ...(updatedPending[GLOBAL_CHAT_ID] || [])]
+        );
 
         return {
           pendingMessagesByChat: updatedPending,
-          messages: mergedMessages,
+          messagesByChat: upsertMessagesForChat(
+            state.messagesByChat,
+            GLOBAL_CHAT_ID,
+            mergedMessages
+          ),
+          messages: state.selectedUser?._id === GLOBAL_CHAT_ID ? mergedMessages : state.messages,
           uploadControllers: removeUploadController(state.uploadControllers, messageId),
           canceledMessageIds: removeCanceledId(state.canceledMessageIds, messageId),
           broadcastMeta: {
@@ -1016,10 +1168,18 @@ export const useChatStore = create((set, get) => ({
 
         return {
           pendingMessagesByChat: updatedPending,
+          messagesByChat: upsertMessagesForChat(
+            state.messagesByChat,
+            GLOBAL_CHAT_ID,
+            mergeServerAndPendingMessages(
+              (state.messagesByChat[GLOBAL_CHAT_ID] || []).filter((msg) => msg._id !== messageId),
+              updatedPending[GLOBAL_CHAT_ID] || []
+            )
+          ),
           messages:
             state.selectedUser?._id === GLOBAL_CHAT_ID
               ? mergeServerAndPendingMessages(
-                  state.messages.filter((msg) => msg._id !== messageId),
+                  (state.messagesByChat[GLOBAL_CHAT_ID] || []).filter((msg) => msg._id !== messageId),
                   updatedPending[GLOBAL_CHAT_ID] || []
                 )
               : state.messages,
@@ -1046,18 +1206,17 @@ export const useChatStore = create((set, get) => ({
     const authUser = useAuthStore.getState().authUser;
     if (!authUser) return;
 
-    const isGlobalOpen = get().selectedUser?._id === GLOBAL_CHAT_ID;
-
     set((state) => {
-      const alreadyExists = state.messages.some((msg) => msg._id === broadcastMessage._id);
-
-      const nextMessages =
-        isGlobalOpen && !alreadyExists
-          ? [...state.messages, { ...broadcastMessage, receiverId: GLOBAL_CHAT_ID }]
-          : state.messages;
+      const nextMessagesByChat = appendMessageForChat(
+        state.messagesByChat,
+        GLOBAL_CHAT_ID,
+        { ...broadcastMessage, receiverId: GLOBAL_CHAT_ID }
+      );
+      const globalMessages = nextMessagesByChat[GLOBAL_CHAT_ID] || [];
 
       return {
-        messages: nextMessages,
+        messagesByChat: nextMessagesByChat,
+        messages: state.selectedUser?._id === GLOBAL_CHAT_ID ? globalMessages : state.messages,
         broadcastMeta: {
           latestMessage: getLatestMessagePreview(broadcastMessage),
           latestMessageAt: broadcastMessage.createdAt,
@@ -1071,12 +1230,13 @@ export const useChatStore = create((set, get) => ({
     const authUser = useAuthStore.getState().authUser;
     if (!authUser) return;
 
-    const selectedUser = get().selectedUser;
-    const isGroupOpen = selectedUser?._id === groupMessage.groupId;
-
     set((state) => {
-      const alreadyExists = state.messages.some((msg) => msg._id === groupMessage._id);
-      const nextMessages = isGroupOpen && !alreadyExists ? [...state.messages, groupMessage] : state.messages;
+      const nextMessagesByChat = appendMessageForChat(
+        state.messagesByChat,
+        groupMessage.groupId,
+        groupMessage
+      );
+      const groupMessages = nextMessagesByChat[groupMessage.groupId] || [];
 
       const updatedGroups = state.groups.map((group) => {
         if (group._id !== groupMessage.groupId) return group;
@@ -1089,7 +1249,11 @@ export const useChatStore = create((set, get) => ({
       });
 
       return {
-        messages: nextMessages,
+        messagesByChat: nextMessagesByChat,
+        messages:
+          state.selectedUser?._id === groupMessage.groupId
+            ? groupMessages
+            : state.messages,
         groups: updatedGroups.sort((a, b) => {
           const aTime = new Date(a.latestMessageAt || 0).getTime();
           const bTime = new Date(b.latestMessageAt || 0).getTime();
@@ -1119,11 +1283,17 @@ export const useChatStore = create((set, get) => ({
   },
 
   removeGroupFromState: (groupId) => {
-    set((state) => ({
-      groups: state.groups.filter((group) => group._id !== groupId),
-      selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
-      messages: state.selectedUser?._id === groupId ? [] : state.messages,
-    }));
+    set((state) => {
+      const nextMessagesByChat = { ...state.messagesByChat };
+      delete nextMessagesByChat[groupId];
+
+      return {
+        groups: state.groups.filter((group) => group._id !== groupId),
+        selectedUser: state.selectedUser?._id === groupId ? null : state.selectedUser,
+        messages: state.selectedUser?._id === groupId ? [] : state.messages,
+        messagesByChat: nextMessagesByChat,
+      };
+    });
   },
 
   markMessagesAsDelivered: async (senderId) => {
@@ -1151,13 +1321,19 @@ export const useChatStore = create((set, get) => ({
   },
 
   updateMessageStatus: (messageId, status, deliveredAt, readAt) => {
-    set({
-      messages: get().messages.map((msg) =>
+    set((state) => ({
+      messagesByChat: updateMessageInAllChats(state.messagesByChat, messageId, (msg) => ({
+        ...msg,
+        status,
+        deliveredAt,
+        readAt,
+      })),
+      messages: state.messages.map((msg) =>
         msg._id === messageId
           ? { ...msg, status, deliveredAt, readAt }
           : msg
       ),
-    });
+    }));
   },
 
   subscribeToMessages: () => {
@@ -1168,17 +1344,23 @@ export const useChatStore = create((set, get) => ({
     if (!socket) return;
 
     socket.on("messageEdited", (editedMessage) => {
-      set({
+      set((state) => ({
+        messagesByChat: updateMessageInAllChats(
+          state.messagesByChat,
+          editedMessage._id,
+          () => editedMessage
+        ),
         messages: get().messages.map((msg) =>
           msg._id === editedMessage._id ? editedMessage : msg
         ),
-      });
+      }));
     });
 
     socket.on("messageDeleted", ({ messageId }) => {
-      set({
+      set((state) => ({
+        messagesByChat: removeMessageFromAllChats(state.messagesByChat, messageId),
         messages: get().messages.filter((msg) => msg._id !== messageId),
-      });
+      }));
     });
 
     socket.on("messageStatusUpdated", ({ messageId, status, deliveredAt, readAt }) => {
@@ -1186,13 +1368,23 @@ export const useChatStore = create((set, get) => ({
     });
 
     socket.on("messagesDelivered", ({ senderId }) => {
-      set({
+      set((state) => ({
+        messagesByChat: Object.fromEntries(
+          Object.entries(state.messagesByChat).map(([chatId, chatMessages]) => [
+            chatId,
+            chatMessages.map((msg) =>
+              msg.senderId === senderId && msg.status === "sent"
+                ? { ...msg, status: "delivered", deliveredAt: new Date() }
+                : msg
+            ),
+          ])
+        ),
         messages: get().messages.map((msg) =>
           msg.senderId === senderId && msg.status === "sent"
             ? { ...msg, status: "delivered", deliveredAt: new Date() }
             : msg
         ),
-      });
+      }));
     });
   },
 
@@ -1211,7 +1403,10 @@ export const useChatStore = create((set, get) => ({
       get().resetUnread(selectedUser._id);
     }
 
-    set({ selectedUser });
+    set((state) => ({
+      selectedUser,
+      messages: selectedUser?._id ? state.messagesByChat[selectedUser._id] || [] : [],
+    }));
   },
 
   setSidebarMode: (mode) => {

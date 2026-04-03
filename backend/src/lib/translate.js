@@ -1,4 +1,4 @@
-import { translate } from "@vitalets/google-translate-api";
+import translate from "@iamtraction/google-translate";
 
 const DEVANAGARI_REGEX = /[\u0900-\u097F]/;
 const GUJARATI_REGEX = /[\u0A80-\u0AFF]/;

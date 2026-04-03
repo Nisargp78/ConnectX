@@ -1,16 +1,16 @@
 import { useChatStore } from "../store/useChatStore";
 
-const TypingIndicator = () => {
-  const { selectedUser, typingUsers } = useChatStore();
+const TypingIndicator = ({ chatUser }) => {
+  const { typingUsers } = useChatStore();
 
-  if (!selectedUser || !typingUsers[selectedUser._id]) {
+  if (!chatUser || !typingUsers[chatUser._id]) {
     return null;
   }
 
   return (
     <div className="flex items-end gap-2 md:gap-3 px-2 md:px-4 pb-2">
       <img
-        src={selectedUser.profilePic || "/avatar.png"}
+        src={chatUser.profilePic || "/avatar.png"}
         alt="typing"
         className="size-7 md:size-10 rounded-full border-2 border-slate-700/50 object-cover ring-2 ring-slate-700/30"
       />
